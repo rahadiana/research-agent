@@ -1,0 +1,229 @@
+<% var title = 'Dashboard'; %>
+
+<!-- Stats Cards -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+  <div class="glass-card rounded-2xl p-5 transition-all duration-200 hover:-translate-y-0.5">
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">Total</span>
+      <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+    </div>
+    <div class="text-3xl font-bold text-white"><%= stats.total %></div>
+  </div>
+  <div class="glass-card rounded-2xl p-5 transition-all duration-200 hover:-translate-y-0.5">
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">Success</span>
+      <svg class="w-4 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+    </div>
+    <div class="text-3xl font-bold text-emerald-400"><%= stats.successRate %>%</div>
+  </div>
+  <div class="glass-card rounded-2xl p-5 transition-all duration-200 hover:-translate-y-0.5">
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">Sources</span>
+      <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+    </div>
+    <div class="text-3xl font-bold text-blue-400"><%= stats.totalSources %></div>
+  </div>
+  <div class="glass-card rounded-2xl p-5 transition-all duration-200 hover:-translate-y-0.5">
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">Active</span>
+      <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+    </div>
+    <div class="text-3xl font-bold text-amber-400"><%= stats.running %></div>
+  </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+  <!-- New Research Form -->
+  <div class="lg:col-span-1">
+    <div class="glass-card rounded-2xl p-6">
+      <h2 class="text-lg font-semibold mb-5 flex items-center gap-2.5">
+        <span class="flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+        </span>
+        New Research
+      </h2>
+      <form id="research-form" class="space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5" for="topic">Topic <span class="text-emerald-400">*</span></label>
+          <input type="text" id="topic" name="topic" required
+                 class="w-full bg-slate-800/50 border border-slate-600/50 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition"
+                 placeholder="e.g. Quantum Computing">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5" for="depth">Depth</label>
+          <select id="depth" name="depth"
+                  class="w-full bg-slate-800/50 border border-slate-600/50 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition">
+            <option value="quick">Quick</option>
+            <option value="medium" selected>Medium</option>
+            <option value="deep">Deep</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5" for="maxSources">Max Sources</label>
+          <input type="number" id="maxSources" name="maxSources" min="1" max="50" value="10"
+                 class="w-full bg-slate-800/50 border border-slate-600/50 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5" for="questions">Questions <span class="text-slate-500 font-normal">(one per line)</span></label>
+          <textarea id="questions" name="questions" rows="3"
+                    class="w-full bg-slate-800/50 border border-slate-600/50 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition"
+                    placeholder="What are the key challenges?&#10;Who are the main researchers?"></textarea>
+        </div>
+        <button type="submit" id="submit-btn"
+                class="w-full bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white font-semibold rounded-xl px-4 py-2.5 text-sm transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-emerald-500/20">
+          <span class="flex items-center justify-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            Start Research
+          </span>
+        </button>
+      </form>
+      <div id="form-status" class="mt-3 text-xs text-slate-400 hidden"></div>
+    </div>
+  </div>
+
+  <!-- Research History -->
+  <div class="lg:col-span-2">
+    <div class="glass-card rounded-2xl overflow-hidden">
+      <div class="px-6 py-4 border-b border-slate-700/50 flex items-center justify-between">
+        <h2 class="text-lg font-semibold flex items-center gap-2">
+          <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+          History
+        </h2>
+        <span class="text-xs font-medium text-slate-500 bg-slate-800/50 px-2.5 py-1 rounded-full"><%= results.length %></span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-left text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-700/30">
+              <th class="px-6 py-3.5">Topic</th>
+              <th class="px-6 py-3.5">Status</th>
+              <th class="px-6 py-3.5 hidden sm:table-cell">Src</th>
+              <th class="px-6 py-3.5 hidden md:table-cell">Progress</th>
+              <th class="px-6 py-3.5 hidden lg:table-cell">Date</th>
+              <th class="px-6 py-3.5 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if (results.length === 0) { %>
+              <tr><td colspan="6" class="px-6 py-12 text-center text-slate-500">
+                <div class="flex flex-col items-center gap-2">
+                  <svg class="w-8 h-8 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                  <p class="text-sm">No research yet. Start your first one!</p>
+                </div>
+              </td></tr>
+            <% } %>
+            <% results.forEach(function(r) { %>
+              <tr class="border-b border-slate-700/20 hover:bg-slate-700/20 transition-colors duration-150">
+                <td class="px-6 py-3.5">
+                  <a href="/research/<%= r.id %>" class="text-emerald-400 hover:text-emerald-300 font-medium transition-colors block truncate max-w-[200px] lg:max-w-[280px]">
+                    <%= r.query.topic.length > 50 ? r.query.topic.slice(0, 50) + '&hellip;' : r.query.topic %>
+                  </a>
+                </td>
+                <td class="px-6 py-3.5">
+                  <% 
+                    var statusMeta = { 
+                      completed: { dot: 'bg-emerald-400', badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
+                      failed: { dot: 'bg-red-400', badge: 'bg-red-500/10 text-red-400 border-red-500/20' },
+                      running: { dot: 'bg-amber-400', badge: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
+                      queued: { dot: 'bg-blue-400', badge: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
+                      cancelled: { dot: 'bg-slate-400', badge: 'bg-slate-500/10 text-slate-400 border-slate-500/20' }
+                    };
+                    var meta = statusMeta[r.status] || statusMeta.cancelled;
+                  %>
+                  <span class="status-badge <%= meta.badge %> border">
+                    <span class="status-dot <%= meta.dot %>"></span>
+                    <%= r.status.charAt(0).toUpperCase() + r.status.slice(1) %>
+                  </span>
+                </td>
+                <td class="px-6 py-3.5 text-slate-400 font-medium hidden sm:table-cell"><%= r.sources.length %></td>
+                <td class="px-6 py-3.5 hidden md:table-cell">
+                  <% 
+                    var barColor = r.status === 'failed' ? 'bg-red-500' : r.status === 'completed' ? 'progress-glow' : 'progress-glow-amber';
+                  %>
+                  <div class="flex items-center gap-2.5">
+                    <div class="flex-1 bg-slate-700/50 rounded-full h-2 overflow-hidden">
+                      <div id="progress-<%= r.id %>" class="progress-bar h-full rounded-full <%= barColor %>" style="width:<%= r.progress.percent %>%"></div>
+                    </div>
+                    <span class="text-xs text-slate-500 w-8 text-right font-medium"><%= r.progress.percent %>%</span>
+                  </div>
+                </td>
+                <td class="px-6 py-3.5 text-slate-500 text-xs hidden lg:table-cell font-medium">
+                  <%= new Date(r.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) %>
+                </td>
+                <td class="px-6 py-3.5">
+                  <div class="flex items-center justify-end gap-1.5">
+                    <a href="/research/<%= r.id %>" class="p-2 text-slate-500 hover:text-slate-200 hover:bg-slate-700/50 rounded-lg transition-all" title="View details">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                    </a>
+                    <button onclick="deleteResearch('<%= r.id %>')" class="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all" title="Delete">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.getElementById('research-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    var btn = document.getElementById('submit-btn');
+    var status = document.getElementById('form-status');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="flex items-center justify-center gap-2"><svg class="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg> Starting...</span>';
+    status.className = 'mt-3 text-xs text-slate-400 hidden';
+    status.textContent = '';
+
+    var questionsRaw = document.getElementById('questions').value;
+    var questions = questionsRaw ? questionsRaw.split('\n').filter(Boolean) : undefined;
+
+    try {
+      var res = await fetch('/research', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: document.getElementById('topic').value,
+          depth: document.getElementById('depth').value,
+          maxSources: parseInt(document.getElementById('maxSources').value, 10),
+          questions: questions && questions.length > 0 ? questions : undefined,
+        }),
+      });
+      var data = await res.json();
+      if (res.ok) {
+        status.className = 'mt-3 text-xs text-emerald-400 block';
+        status.textContent = 'Research queued! Watch the table for updates.';
+        document.getElementById('topic').value = '';
+        document.getElementById('questions').value = '';
+      } else {
+        status.className = 'mt-3 text-xs text-red-400 block';
+        status.textContent = data.error || 'Failed to start research';
+      }
+    } catch (err) {
+      status.className = 'mt-3 text-xs text-red-400 block';
+      status.textContent = 'Network error';
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<span class="flex items-center justify-center gap-2"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> Start Research</span>';
+    }
+  });
+
+  async function deleteResearch(id) {
+    if (!confirm('Delete this research?')) return;
+    try {
+      var res = await fetch('/research/' + id, { method: 'DELETE' });
+      if (res.ok) location.reload();
+      else alert('Failed to delete');
+    } catch {
+      alert('Network error');
+    }
+  }
+
+  socket.on('research:started', function() { setTimeout(function() { location.reload(); }, 500); });
+  socket.on('research:progress', function() {});
+  socket.on('research:complete', function() { setTimeout(function() { location.reload(); }, 1500); });
+</script>

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= locals.title ? title + ' — ' : '' %>Research Agent Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    * { font-family: 'Inter', system-ui, sans-serif; }
+    body { background: #0b1120; }
+    .glass { background: rgba(30, 41, 59, 0.6); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+    .glass-card { background: rgba(30, 41, 59, 0.8); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid rgba(148, 163, 184, 0.08); }
+    .glass-card:hover { border-color: rgba(148, 163, 184, 0.15); }
+    .progress-bar { transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
+    .progress-glow { background: linear-gradient(90deg, #10b981, #34d399, #6ee7b7); background-size: 200% 100%; animation: shimmer 2s ease infinite; }
+    .progress-glow-amber { background: linear-gradient(90deg, #f59e0b, #fbbf24, #fcd34d); background-size: 200% 100%; animation: shimmer 2s ease infinite; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    .toast { animation: slideIn 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
+    @keyframes slideIn { from { transform: translateX(100%) scale(0.9); opacity: 0; } to { transform: translateX(0) scale(1); opacity: 1; } }
+    .fade-in { animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .status-badge { display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.125rem 0.625rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; line-height: 1.5; }
+    .status-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+    .nav-link { position: relative; }
+    .nav-link::after { content: ''; position: absolute; bottom: -2px; left: 0; width: 0; height: 2px; background: #10b981; transition: width 0.2s ease; border-radius: 1px; }
+    .nav-link:hover::after { width: 100%; }
+    [x-cloak] { display: none !important; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+  </style>
+  <!-- Socket.IO -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script>const socket = io();</script>
+</head>
+<body class="text-slate-100 min-h-screen flex flex-col antialiased">
+  <!-- Nav -->
+  <nav class="glass border-b border-slate-700/50 sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-14">
+        <a href="/" class="flex items-center gap-2.5 text-lg font-semibold text-emerald-400 hover:text-emerald-300 transition-colors">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+          </svg>
+          Research Agent
+        </a>
+        <div class="flex items-center gap-6 text-sm font-medium">
+          <a href="/" class="nav-link text-slate-400 hover:text-slate-200 transition-colors">Dashboard</a>
+          <a href="/api/stats" class="nav-link text-slate-400 hover:text-slate-200 transition-colors">Stats API</a>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <main class="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full fade-in">
+    <%- body %>
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-slate-800/50 text-center text-xs text-slate-600 py-5">
+    Research Agent Dashboard
+  </footer>
+
+  <script>
+    function showToast(message, type) {
+      const icons = {
+        success: '<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+        error: '<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+        info: '<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+        warning: '<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>'
+      };
+      const colors = { success: 'bg-emerald-600/90 border-emerald-500/30', error: 'bg-red-600/90 border-red-500/30', info: 'bg-blue-600/90 border-blue-500/30', warning: 'bg-amber-600/90 border-amber-500/30' };
+      const toast = document.createElement('div');
+      toast.className = 'toast fixed top-4 right-4 z-[100] flex items-center gap-2.5 px-4 py-3 rounded-xl text-white text-sm shadow-2xl border ' + (colors[type] || colors.info);
+      toast.innerHTML = (icons[type] || '') + '<span>' + message + '</span>';
+      document.body.appendChild(toast);
+      setTimeout(function() {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(100%) scale(0.9)';
+        toast.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+        setTimeout(function() { toast.remove(); }, 300);
+      }, 4000);
+    }
+
+    socket.on('research:started', function(data) {
+      showToast('Research ' + data.resultId.slice(0, 8) + ' started!', 'info');
+    });
+    socket.on('research:complete', function(data) {
+      showToast('Research ' + data.resultId.slice(0, 8) + ' completed!', 'success');
+    });
+    socket.on('research:error', function(data) {
+      showToast('Research ' + data.resultId.slice(0, 8) + ' failed: ' + data.error, 'error');
+    });
+    socket.on('research:progress', function(data) {
+      var el = document.getElementById('progress-' + data.resultId);
+      if (el) { el.style.width = data.progress.percent + '%'; el.setAttribute('aria-valuenow', data.progress.percent); }
+      var msgEl = document.getElementById('progress-msg-' + data.resultId);
+      if (msgEl) msgEl.textContent = data.progress.message;
+    });
+  </script>
+</body>
+</html>

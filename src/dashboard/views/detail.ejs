@@ -1,0 +1,355 @@
+<% var title = result.query.topic; %>
+
+<!-- Header -->
+<div class="flex flex-wrap items-start justify-between gap-4 mb-8">
+  <div class="flex-1 min-w-0">
+    <div class="flex items-center gap-3 mb-2">
+      <a href="/" class="flex items-center justify-center w-8 h-8 rounded-xl bg-slate-800/50 text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 transition-all">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+      </a>
+      <h1 class="text-2xl font-bold text-white truncate"><%= result.query.topic %></h1>
+    </div>
+    <div class="flex flex-wrap items-center gap-3 text-xs text-slate-500 ml-11">
+      <% 
+        var statusMeta = { 
+          completed: { dot: 'bg-emerald-400', badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
+          failed: { dot: 'bg-red-400', badge: 'bg-red-500/10 text-red-400 border-red-500/20' },
+          running: { dot: 'bg-amber-400', badge: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
+          queued: { dot: 'bg-blue-400', badge: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
+          cancelled: { dot: 'bg-slate-400', badge: 'bg-slate-500/10 text-slate-400 border-slate-500/20' }
+        };
+        var meta = statusMeta[result.status] || statusMeta.cancelled;
+      %>
+      <span class="status-badge <%= meta.badge %> border">
+        <span class="status-dot <%= meta.dot %>"></span>
+        <%= result.status.charAt(0).toUpperCase() + result.status.slice(1) %>
+      </span>
+      <% if (result.query.depth) { %>
+        <span class="flex items-center gap-1">
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+          <%= result.query.depth %>
+        </span>
+      <% } %>
+      <span class="flex items-center gap-1">
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+        <%= result.sources.length %> sources
+      </span>
+      <span class="flex items-center gap-1">
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+        <%= new Date(result.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) %>
+      </span>
+      <% if (result.completedAt) { %>
+        <span class="flex items-center gap-1">
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <%= new Date(result.completedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) %>
+        </span>
+      <% } %>
+    </div>
+  </div>
+  <% if (result.report) { %>
+    <div class="flex items-center gap-2 shrink-0">
+      <a href="/research/<%= result.id %>/export/markdown" class="flex items-center gap-1.5 bg-slate-800/50 hover:bg-slate-700/50 text-slate-300 hover:text-slate-100 px-3.5 py-2 rounded-xl text-xs font-medium border border-slate-600/30 hover:border-slate-500/50 transition-all">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+        MD
+      </a>
+      <a href="/research/<%= result.id %>/export/json" class="flex items-center gap-1.5 bg-slate-800/50 hover:bg-slate-700/50 text-slate-300 hover:text-slate-100 px-3.5 py-2 rounded-xl text-xs font-medium border border-slate-600/30 hover:border-slate-500/50 transition-all">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+        JSON
+      </a>
+      <a href="/research/<%= result.id %>/export/html" class="flex items-center gap-1.5 bg-slate-800/50 hover:bg-slate-700/50 text-slate-300 hover:text-slate-100 px-3.5 py-2 rounded-xl text-xs font-medium border border-slate-600/30 hover:border-slate-500/50 transition-all">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+        HTML
+      </a>
+    </div>
+  <% } %>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+  <!-- Main content -->
+  <div class="lg:col-span-2 space-y-6">
+    <!-- Progress bar (for running/queued) -->
+    <% if (result.status === 'running' || result.status === 'queued') { %>
+      <div class="glass-card rounded-2xl p-6">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-sm font-semibold text-slate-200 flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+            <%= result.progress.phase.charAt(0).toUpperCase() + result.progress.phase.slice(1) %>
+          </span>
+          <span class="text-sm font-bold text-amber-400"><%= result.progress.percent %>%</span>
+        </div>
+        <div class="bg-slate-700/50 rounded-full h-2.5 overflow-hidden">
+          <div id="progress-<%= result.id %>" class="progress-bar h-full rounded-full progress-glow-amber" style="width:<%= result.progress.percent %>%"></div>
+        </div>
+        <p id="progress-msg-<%= result.id %>" class="mt-3 text-xs text-slate-500"><%= result.progress.message %></p>
+      </div>
+    <% } %>
+
+    <!-- Error -->
+    <% if (result.status === 'failed' && result.error) { %>
+      <div class="glass-card rounded-2xl p-6 border-red-500/20">
+        <div class="flex items-start gap-3">
+          <div class="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
+            <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </div>
+          <div>
+            <p class="text-sm font-semibold text-red-300">Research Failed</p>
+            <p class="text-xs text-red-400/80 mt-1.5 leading-relaxed"><%= result.error %></p>
+          </div>
+        </div>
+      </div>
+    <% } %>
+
+    <!-- Report -->
+    <% if (result.report) { %>
+      <!-- Summary -->
+      <div class="glass-card rounded-2xl p-6">
+        <h2 class="text-lg font-semibold mb-4 flex items-center gap-2.5">
+          <span class="flex items-center justify-center w-7 h-7 rounded-lg bg-blue-500/10 text-blue-400">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </span>
+          Summary
+        </h2>
+        <div class="text-sm text-slate-300 leading-[1.85] max-w-none">
+          <% 
+            var summaryText = result.report.summary || '';
+            var summaryParts = summaryText.split(/\n{2,}/);
+            summaryParts.forEach(function(paragraph) { 
+              var trimmed = paragraph.trim();
+              if (trimmed) { 
+          %>
+            <p class="mb-3 last:mb-0"><%= trimmed %></p>
+          <% } }); %>
+        </div>
+      </div>
+
+      <!-- Key Findings -->
+      <% if (result.report.keyFindings.length > 0) { %>
+        <div class="glass-card rounded-2xl p-6">
+          <h2 class="text-lg font-semibold mb-4 flex items-center gap-2.5">
+            <span class="flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-400">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </span>
+            Key Findings
+          </h2>
+          <ul class="space-y-3">
+            <% result.report.keyFindings.forEach(function(f) { %>
+              <li class="flex items-start gap-3 text-sm text-slate-300">
+                <span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-400 shrink-0 mt-0.5">
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                </span>
+                <span class="leading-relaxed"><%= f %></span>
+              </li>
+            <% }); %>
+          </ul>
+        </div>
+      <% } %>
+
+      <!-- Sections -->
+      <% if (result.report.sections.length > 0) { %>
+        <div class="glass-card rounded-2xl p-6">
+          <h2 class="text-lg font-semibold mb-4 flex items-center gap-2.5">
+            <span class="flex items-center justify-center w-7 h-7 rounded-lg bg-violet-500/10 text-violet-400">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"/></svg>
+            </span>
+            Report
+          </h2>
+          <div class="prose prose-invert prose-sm max-w-none
+            prose-headings:text-slate-100 prose-headings:font-semibold prose-headings:mt-6 prose-headings:mb-3
+            prose-p:text-slate-300 prose-p:leading-[1.8] prose-p:mb-4 prose-p:text-justify
+            prose-a:text-emerald-400 prose-a:no-underline hover:prose-a:underline
+            prose-strong:text-slate-200
+            prose-code:text-emerald-300 prose-code:bg-slate-800/50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded
+            prose-pre:bg-slate-800/50 prose-pre:border prose-pre:border-slate-700/30 prose-pre:rounded-xl prose-pre:p-4
+            prose-li:text-slate-300 prose-li:leading-relaxed prose-li:mb-1.5
+            prose-ul:my-3 prose-ol:my-3
+            prose-hr:border-slate-700/30
+            prose-blockquote:border-l-emerald-500/30 prose-blockquote:text-slate-400 prose-blockquote:italic prose-blockquote:pl-4 prose-blockquote:my-4">
+            <%- reportHtml %>
+          </div>
+        </div>
+      <% } %>
+
+      <!-- Conclusions -->
+      <% if (result.report.conclusions.length > 0) { %>
+        <div class="glass-card rounded-2xl p-6 border-blue-500/10">
+          <h2 class="text-lg font-semibold mb-4 flex items-center gap-2.5">
+            <span class="flex items-center justify-center w-7 h-7 rounded-lg bg-blue-500/10 text-blue-400">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </span>
+            Conclusions
+          </h2>
+          <ul class="space-y-3">
+            <% result.report.conclusions.forEach(function(c) { %>
+              <li class="flex items-start gap-3 text-sm text-slate-300">
+                <span class="flex items-center justify-center w-5 h-5 rounded-full bg-blue-500/10 text-blue-400 shrink-0 mt-0.5">
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                </span>
+                <span class="leading-relaxed"><%= c %></span>
+              </li>
+            <% }); %>
+          </ul>
+        </div>
+      <% } %>
+    <% } else if (result.status === 'running' || result.status === 'queued') { %>
+      <div class="glass-card rounded-2xl p-12 text-center">
+        <div class="flex flex-col items-center gap-4">
+          <div class="w-12 h-12 border-[3px] border-emerald-400/30 border-t-emerald-400 rounded-full animate-spin"></div>
+          <div>
+            <p class="text-base font-medium text-slate-200">Research in progress</p>
+            <p class="text-xs text-slate-500 mt-1">This page will update automatically when complete</p>
+          </div>
+        </div>
+      </div>
+    <% } %>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="space-y-6">
+    <!-- Meta card -->
+    <div class="glass-card rounded-2xl p-5 space-y-4">
+      <div class="flex items-center gap-2 text-sm font-semibold">
+        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        Details
+      </div>
+      <div class="space-y-3 text-xs">
+        <div class="flex items-center justify-between">
+          <span class="text-slate-500">Status</span>
+          <span class="status-badge <%= meta.badge %> border">
+            <span class="status-dot <%= meta.dot %>"></span>
+            <%= result.status.charAt(0).toUpperCase() + result.status.slice(1) %>
+          </span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-slate-500">Depth</span>
+          <span class="text-slate-300 font-medium capitalize"><%= result.query.depth || 'medium' %></span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-slate-500">Sources</span>
+          <span class="text-slate-300 font-medium"><%= result.sources.length %></span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-slate-500">Created</span>
+          <span class="text-slate-300"><%= new Date(result.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) %></span>
+        </div>
+        <% if (result.completedAt) { %>
+          <div class="flex items-center justify-between">
+            <span class="text-slate-500">Completed</span>
+            <span class="text-slate-300"><%= new Date(result.completedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) %></span>
+          </div>
+        <% } %>
+      </div>
+    </div>
+
+    <!-- Sources -->
+    <div class="glass-card rounded-2xl overflow-hidden">
+      <div class="px-5 py-3.5 border-b border-slate-700/30 flex items-center justify-between">
+        <h3 class="text-sm font-semibold flex items-center gap-2">
+          <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+          Sources
+        </h3>
+        <span class="text-xs font-medium text-slate-500 bg-slate-800/50 px-2 py-0.5 rounded-full"><%= result.sources.length %></span>
+      </div>
+      <div class="divide-y divide-slate-700/20 max-h-96 overflow-y-auto">
+        <% if (result.sources.length === 0) { %>
+          <div class="px-5 py-8 text-center">
+            <p class="text-xs text-slate-500">No sources collected</p>
+          </div>
+        <% } %>
+        <% result.sources.forEach(function(s) { %>
+          <div class="px-5 py-3 hover:bg-slate-700/20 transition-colors duration-150">
+            <a href="<%= s.url %>" target="_blank" rel="noopener" class="text-sm text-emerald-400 hover:text-emerald-300 font-medium block truncate transition-colors">
+              <%= s.title || s.url %>
+            </a>
+            <div class="flex items-center gap-2 mt-1 text-xs text-slate-500">
+              <span class="truncate flex-1"><%= s.url %></span>
+              <% if (s.relevanceScore !== undefined) { %>
+                <span class="shrink-0 px-1.5 py-0.5 rounded-md bg-slate-800 text-slate-400 text-[10px] font-medium"><%= Math.round(s.relevanceScore * 100) %>%</span>
+              <% } %>
+            </div>
+          </div>
+        <% }); %>
+      </div>
+    </div>
+
+    <!-- Questions -->
+    <% if (result.query.questions && result.query.questions.length > 0) { %>
+      <div class="glass-card rounded-2xl p-5">
+        <h3 class="text-sm font-semibold mb-3 flex items-center gap-2">
+          <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Research Questions
+        </h3>
+        <ul class="space-y-2">
+          <% result.query.questions.forEach(function(q) { %>
+            <li class="text-xs text-slate-400 flex items-start gap-2.5">
+              <span class="flex items-center justify-center w-4 h-4 rounded-full bg-emerald-500/10 text-emerald-400 shrink-0 mt-0.5 text-[10px] font-bold">&quest;</span>
+              <span class="leading-relaxed"><%= q %></span>
+            </li>
+          <% }); %>
+        </ul>
+      </div>
+    <% } %>
+
+    <!-- Actions -->
+    <div class="glass-card rounded-2xl p-4 space-y-2">
+      <a href="/" class="flex items-center justify-center gap-2 w-full bg-slate-700/30 hover:bg-slate-700/50 text-slate-300 hover:text-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium transition-all">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+        Back to Dashboard
+      </a>
+      <button onclick="deleteAndBack('<%= result.id %>')" class="flex items-center justify-center gap-2 w-full bg-red-500/5 hover:bg-red-500/10 text-red-400 hover:text-red-300 rounded-xl px-4 py-2.5 text-sm font-medium transition-all">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        Delete Research
+      </button>
+    </div>
+
+    <!-- References -->
+    <% if (result.report && result.report.references.length > 0) { %>
+      <div class="glass-card rounded-2xl p-5">
+        <h3 class="text-sm font-semibold mb-3 flex items-center gap-2">
+          <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+          References
+        </h3>
+        <ol class="list-decimal list-inside space-y-1.5">
+          <% result.report.references.forEach(function(ref) { %>
+            <li class="text-xs text-slate-400 leading-relaxed py-0.5"><%= ref %></li>
+          <% }); %>
+        </ol>
+      </div>
+    <% } %>
+  </div>
+</div>
+
+<script>
+  socket.emit('research:subscribe', { resultId: '<%= result.id %>' });
+
+  socket.on('research:progress', function(data) {
+    if (data.resultId === '<%= result.id %>') {
+      var bar = document.getElementById('progress-' + data.resultId);
+      if (bar) bar.style.width = data.progress.percent + '%';
+      var msg = document.getElementById('progress-msg-' + data.resultId);
+      if (msg) msg.textContent = data.progress.message;
+    }
+  });
+
+  socket.on('research:complete', function(data) {
+    if (data.resultId === '<%= result.id %>') {
+      setTimeout(function() { location.reload(); }, 1000);
+    }
+  });
+
+  socket.on('research:error', function(data) {
+    if (data.resultId === '<%= result.id %>') {
+      setTimeout(function() { location.reload(); }, 1000);
+    }
+  });
+
+  async function deleteAndBack(id) {
+    if (!confirm('Delete this research?')) return;
+    try {
+      var res = await fetch('/research/' + id, { method: 'DELETE' });
+      if (res.ok) window.location.href = '/';
+      else alert('Failed to delete');
+    } catch {
+      alert('Network error');
+    }
+  }
+</script>

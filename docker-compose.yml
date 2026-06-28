@@ -1,0 +1,68 @@
+# =============================================================================
+# Research Agent + Cloudflare Tunnel — docker-compose
+# =============================================================================
+# Cara pakai:
+#
+#   1. Build & jalankan:
+#      docker compose up -d
+#
+#   2. Dashboard lokal: http://localhost:3000
+#
+#   3. Cloudflare Tunnel (free — no account needed):
+#      a) Quick tunnel (random *.trycloudflare.com URL):
+#         docker compose up -d && docker compose logs cloudflared
+#         → lihat URL-nya di log: "https://xxxx.trycloudflare.com"
+#
+#      b) Tunnel dengan custom domain (butuh akun Cloudflare):
+#         - Setup tunnel: cloudflared tunnel login && cloudflared tunnel create agent
+#         - Simpan token ke .env: TUNNEL_TOKEN=<token>
+#         - Jalankan: docker compose --profile custom up -d
+#
+#   4. Environment variables:
+#      Copy .env.example → .env, isi API key-nya
+# =============================================================================
+
+services:
+
+  # ── Research Agent ──────────────────────────────────────────────────────
+  research-agent:
+    build: .
+    container_name: research-agent
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DASHBOARD_PORT: "3000"
+      DASHBOARD_HOST: "0.0.0.0"
+      DATA_DIR: "/app/data"
+    env_file:
+      - .env
+    volumes:
+      # Persist data (vector DB, scheduler tasks, dll)
+      - research_data:/app/data
+
+  # ── Cloudflare Tunnel (quick — no account needed) ──────────────────────
+  # URL acak *.trycloudflare.com, cocok untuk testing
+  # Aktif dengan: docker compose up -d
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: research-cloudflared
+    restart: unless-stopped
+    command: tunnel --url http://research-agent:3000
+    depends_on:
+      - research-agent
+
+  # ── Cloudflare Tunnel (custom domain — butuh akun) ─────────────────────
+  # Aktifkan dengan: docker compose --profile custom up -d
+  cloudflared-custom:
+    image: cloudflare/cloudflared:latest
+    container_name: research-cloudflared-custom
+    restart: unless-stopped
+    profiles:
+      - custom
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+    depends_on:
+      - research-agent
+
+volumes:
+  research_data:
