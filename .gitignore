@@ -5,3 +5,7 @@ data/
 *.log
 coverage/
 .tmp/
+.agentic/
+tsconfig.tsbuildinfo
+cleaned_output.json
+revised-plan.json
