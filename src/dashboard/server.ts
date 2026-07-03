@@ -139,9 +139,11 @@ function reportSectionsToMarkdown(result: ResearchResult): string {
     if (byDouble.length > 1) return byDouble;
     // Split by kalimat: . ! ? diikuti spasi + huruf besar
     const sentences = text.match(/[^.!?\s][^.!?]*[.!?](?:\s|$)/g) || [text];
+    // Group 7-8 kalimat per paragraf biar gak kepotong2 kecil
+    const groupSize = sentences.length > 20 ? 8 : 6;
     const chunks: string[] = [];
-    for (let i = 0; i < sentences.length; i += 4) {
-      const chunk = sentences.slice(i, i + 4).join(' ').trim();
+    for (let i = 0; i < sentences.length; i += groupSize) {
+      const chunk = sentences.slice(i, i + groupSize).join(' ').trim();
       if (chunk) chunks.push(chunk);
     }
     return chunks.length > 0 ? chunks : [text.trim()];

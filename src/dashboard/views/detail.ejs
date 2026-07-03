@@ -118,10 +118,11 @@
               if (byDouble.length > 1) return byDouble;
               // Gak ada double newline — split by kalimat (batas: .!? diikuti spasi + huruf besar/kutip)
               var sentences = text.match(/[^.!?\s][^.!?]*[.!?](?:\s|$)/g) || [text];
-              // Kelompokkan ~4 kalimat per paragraf
+              // Kelompokkan 6-8 kalimat per paragraf biar gak kepotong2
+              var groupSize = sentences.length > 20 ? 8 : 6;
               var paragraphs = [];
-              for (var i = 0; i < sentences.length; i += 4) {
-                var chunk = sentences.slice(i, i + 4).join(' ').trim();
+              for (var i = 0; i < sentences.length; i += groupSize) {
+                var chunk = sentences.slice(i, i + groupSize).join(' ').trim();
                 if (chunk) paragraphs.push(chunk);
               }
               return paragraphs.length > 0 ? paragraphs : [text.trim()];
