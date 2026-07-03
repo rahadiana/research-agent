@@ -130,13 +130,32 @@ function reportSectionsToMarkdown(result: ResearchResult): string {
   const report = result.report;
   if (!report) return '';
 
+  /**
+   * Split teks jadi paragraf: prioritas double-newline, fallback split by kalimat.
+   */
+  function toParagraphs(text: string): string[] {
+    if (!text) return [];
+    const byDouble = text.split(/\n\s*\n/).map(s => s.trim()).filter(Boolean);
+    if (byDouble.length > 1) return byDouble;
+    // Split by kalimat: . ! ? diikuti spasi + huruf besar
+    const sentences = text.match(/[^.!?\s][^.!?]*[.!?](?:\s|$)/g) || [text];
+    const chunks: string[] = [];
+    for (let i = 0; i < sentences.length; i += 4) {
+      const chunk = sentences.slice(i, i + 4).join(' ').trim();
+      if (chunk) chunks.push(chunk);
+    }
+    return chunks.length > 0 ? chunks : [text.trim()];
+  }
+
   const parts: string[] = [];
 
   for (const section of report.sections) {
-    parts.push(`## ${section.heading}\n\n${section.content}`);
+    const paragraphs = toParagraphs(section.content);
+    parts.push(`## ${section.heading}\n\n${paragraphs.join('\n\n')}`);
     if (section.subsections) {
       for (const sub of section.subsections) {
-        parts.push(`### ${sub.heading}\n\n${sub.content}`);
+        const subParagraphs = toParagraphs(sub.content);
+        parts.push(`### ${sub.heading}\n\n${subParagraphs.join('\n\n')}`);
       }
     }
   }

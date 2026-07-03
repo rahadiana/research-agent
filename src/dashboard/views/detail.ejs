@@ -111,14 +111,26 @@
         </h2>
         <div class="text-sm text-slate-300 leading-[1.85] max-w-none">
           <% 
-            var summaryText = result.report.summary || '';
-            var summaryParts = summaryText.split(/\n{2,}/);
+            function splitParagraphs(text) {
+              if (!text) return [];
+              // Coba split by double newline dulu
+              var byDouble = text.split(/\n\s*\n/).map(function(s) { return s.trim(); }).filter(Boolean);
+              if (byDouble.length > 1) return byDouble;
+              // Gak ada double newline — split by kalimat (batas: .!? diikuti spasi + huruf besar/kutip)
+              var sentences = text.match(/[^.!?\s][^.!?]*[.!?](?:\s|$)/g) || [text];
+              // Kelompokkan ~4 kalimat per paragraf
+              var paragraphs = [];
+              for (var i = 0; i < sentences.length; i += 4) {
+                var chunk = sentences.slice(i, i + 4).join(' ').trim();
+                if (chunk) paragraphs.push(chunk);
+              }
+              return paragraphs.length > 0 ? paragraphs : [text.trim()];
+            }
+            var summaryParts = splitParagraphs(result.report.summary || '');
             summaryParts.forEach(function(paragraph) { 
-              var trimmed = paragraph.trim();
-              if (trimmed) { 
           %>
-            <p class="mb-3 last:mb-0"><%= trimmed %></p>
-          <% } }); %>
+            <p class="mb-3 last:mb-0"><%= paragraph %></p>
+          <% }); %>
         </div>
       </div>
 
