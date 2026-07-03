@@ -10,6 +10,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { marked } from 'marked';
 import type { ResearchEngine } from '../core/research-engine.js';
+import type { ResearchScheduler } from '../core/scheduler.js';
 import type {
   ResearchResult,
   ResearchQuery,
@@ -167,16 +168,19 @@ export class DashboardServer {
   private server: http.Server;
   private io: SocketIOServer;
   private engine: ResearchEngine;
+  private scheduler?: ResearchScheduler;
   private port: number;
   private host: string;
 
   /**
-   * @param engine  - Instance ResearchEngine
-   * @param port    - Port (default: env DASHBOARD_PORT atau 3000)
-   * @param host    - Host (default: env DASHBOARD_HOST atau 'localhost')
+   * @param engine    - Instance ResearchEngine
+   * @param port      - Port (default: env DASHBOARD_PORT atau 3000)
+   * @param host      - Host (default: env DASHBOARD_HOST atau 'localhost')
+   * @param scheduler - Instance ResearchScheduler (opsional)
    */
-  constructor(engine: ResearchEngine, port?: number, host?: string) {
+  constructor(engine: ResearchEngine, port?: number, host?: string, scheduler?: ResearchScheduler) {
     this.engine = engine;
+    this.scheduler = scheduler;
     this.port = port ?? (Number(process.env.DASHBOARD_PORT) || 3000);
     this.host = host ?? (process.env.DASHBOARD_HOST || 'localhost');
 
@@ -210,6 +214,63 @@ export class DashboardServer {
 
   /** Registrasi seluruh HTTP routes */
   private setupRoutes(): void {
+    // ----- Scheduler API Routes -----
+    if (this.scheduler) {
+      this.app.get('/api/scheduler/tasks', async (_req, res) => {
+        try {
+          const tasks = await this.scheduler!.listTasks();
+          res.json(tasks);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error);
+          res.status(500).json({ error: msg });
+        }
+      });
+
+      this.app.post('/api/scheduler/task', async (req, res) => {
+        try {
+          const { name, topic, cronExpression, depth, maxSources, questions } = req.body;
+          if (!name || !topic || !cronExpression) {
+            res.status(400).json({ error: 'name, topic, and cronExpression are required' });
+            return;
+          }
+          const query: ResearchQuery = {
+            topic,
+            depth: depth ?? 'medium',
+            maxSources: maxSources ? Number(maxSources) : undefined,
+            questions: questions ? (Array.isArray(questions) ? questions : [questions]) : undefined,
+          };
+          const task = await this.scheduler!.addTask(name, query, cronExpression);
+          res.status(201).json(task);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error);
+          res.status(400).json({ error: msg });
+        }
+      });
+
+      this.app.delete('/api/scheduler/task/:id', async (req, res) => {
+        try {
+          const deleted = await this.scheduler!.removeTask(req.params.id);
+          if (deleted) res.json({ message: 'Task deleted' });
+          else res.status(404).json({ error: 'Task not found' });
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error);
+          res.status(500).json({ error: msg });
+        }
+      });
+
+      this.app.post('/api/scheduler/task/:id/run', async (req, res) => {
+        try {
+          this.scheduler!.runNow(req.params.id).catch((err: Error) => {
+            console.error('[Scheduler] Run task error:', err);
+          });
+          res.status(202).json({ message: 'Task started' });
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error);
+          res.status(400).json({ error: msg });
+        }
+      });
+    }
+
     // ----- Healthcheck (untuk Docker) -----
     this.app.get('/health', (_req, res) => {
       res.json({ status: 'ok', uptime: process.uptime() });
@@ -349,6 +410,21 @@ export class DashboardServer {
       }
     });
 
+    // ----- Retry research (jalanin ulang dengan ID & query yg sama) -----
+    this.app.post('/research/:id/retry', async (req, res) => {
+      try {
+        const newResult = await this.engine.retryResearch(req.params.id);
+        if (!newResult) {
+          res.status(404).json({ error: 'Research not found' });
+          return;
+        }
+        res.status(202).json({ message: 'Research retried', id: newResult.id });
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        res.status(500).json({ error: msg });
+      }
+    });
+
     // ----- API: List results -----
     this.app.get('/api/research', async (_req, res) => {
       try {
@@ -408,7 +484,10 @@ export class DashboardServer {
   /** Bridge event dari ResearchEngine → Socket.IO */
   private setupEngineListeners(): void {
     this.engine.on('started', (result: ResearchResult) => {
-      this.io.emit('research:started', { resultId: result.id });
+      this.io.emit('research:started', {
+        resultId: result.id,
+        topic: result.query.topic,
+      });
     });
 
     this.engine.on('progress', (resultId: string, progress: ResearchProgress) => {

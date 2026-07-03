@@ -10,7 +10,7 @@
 import { v4 as uuid } from 'uuid';
 import fs from 'fs/promises';
 import path from 'path';
-import cron from 'node-cron';
+import cron, { type ScheduledTask as CronScheduledTask } from 'node-cron';
 import type { ResearchQuery, ResearchResult, ResearchStatus } from '../types/index.js';
 import type { ResearchEngine } from './research-engine.js';
 
@@ -65,7 +65,7 @@ export interface SchedulerConfig {
 
 export class ResearchScheduler {
   private tasks: Map<string, ScheduledTask> = new Map();
-  private cronJobs: Map<string, cron.ScheduledTask> = new Map();
+  private cronJobs: Map<string, CronScheduledTask> = new Map();
   private activeExecutions: Map<string, Promise<ResearchResult>> = new Map();
   private taskHistory: Map<string, TaskExecution[]> = new Map();
   private isStarted = false;
@@ -369,7 +369,6 @@ export class ResearchScheduler {
         });
       },
       {
-        scheduled: true,
         timezone: this.resolvedConfig.timezone,
       },
     );

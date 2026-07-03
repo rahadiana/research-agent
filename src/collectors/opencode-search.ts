@@ -43,6 +43,8 @@ export interface OpencodeSearchConfig {
   timeout?: number;
   /** Auto-start server sendiri jika tidak ada yang running */
   autoStart?: boolean;
+  /** Model ID untuk prompt (format: "providerID/modelID", default: auto) */
+  model?: string;
 }
 
 interface SearchResultItem {
@@ -57,15 +59,23 @@ export class OpencodeSearchCollector implements SourceCollector {
   name = 'opencode-search';
   private client: Awaited<ReturnType<typeof import('@opencode-ai/sdk')['createOpencodeClient']>> | null = null;
   private server: Awaited<ReturnType<typeof import('@opencode-ai/sdk')['createOpencode']>> | null = null;
-  private config: Required<Pick<OpencodeSearchConfig, 'baseUrl' | 'timeout' | 'autoStart'>>;
+  private config: Required<OpencodeSearchConfig>;
   private sessionId: string | null = null;
+  private parsedModel: { providerID: string; modelID: string } | null = null;
 
   constructor(config?: OpencodeSearchConfig) {
     this.config = {
       baseUrl: config?.baseUrl ?? 'http://localhost:4096',
       timeout: config?.timeout ?? 120_000,
       autoStart: config?.autoStart ?? true,
+      model: config?.model ?? '',
     };
+    if (this.config.model) {
+      const parts = this.config.model.split('/');
+      this.parsedModel = parts.length === 2
+        ? { providerID: parts[0], modelID: parts[1] }
+        : { providerID: '', modelID: this.config.model };
+    }
   }
 
   async initialize(): Promise<void> {
@@ -130,12 +140,20 @@ export class OpencodeSearchCollector implements SourceCollector {
 
     let response;
     try {
+      const promptBody: {
+        parts: Array<{ type: 'text'; text: string }>;
+        system: string;
+        model?: { providerID: string; modelID: string };
+      } = {
+        parts: [{ type: 'text' as const, text }],
+        system: 'Kamu adalah search engine. Cari informasi di web — prioritaskan sumber resmi, artikel orisinil, publikasi terpercaya, dan jurnal akademik yang relevan dengan topik.',
+      };
+      if (this.parsedModel) {
+        promptBody.model = this.parsedModel;
+      }
       response = await this.client.session.prompt({
         path: { id: this.sessionId },
-        body: {
-          parts: [{ type: 'text' as const, text }],
-          system: 'Kamu adalah search engine. Cari informasi di web — prioritaskan sumber resmi, artikel orisinil, publikasi terpercaya, dan jurnal akademik yang relevan dengan topik.',
-        },
+        body: promptBody,
         signal: controller.signal,
       });
     } catch (err) {

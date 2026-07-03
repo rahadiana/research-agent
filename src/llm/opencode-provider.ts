@@ -26,6 +26,8 @@ export interface OpenCodeConfig {
   timeout?: number;
   /** Auto-start server sendiri jika tidak ada yang running */
   autoStart?: boolean;
+  /** Model ID untuk prompt (format: "providerID/modelID", default: auto) */
+  model?: string;
 }
 
 // ─── OpenCode Provider ────────────────────────────────────────
@@ -36,12 +38,23 @@ export class OpenCodeProvider implements LLMProvider {
   private config: Required<OpenCodeConfig>;
   private currentSessionId: string | null = null;
 
+  private parsedModel: { providerID: string; modelID: string } | null = null;
+
   constructor(config: OpenCodeConfig = {}) {
     this.config = {
       baseUrl: config.baseUrl ?? 'http://localhost:4096',
       timeout: config.timeout ?? 120000,
       autoStart: config.autoStart ?? false,
+      model: config.model ?? '',
     };
+    if (this.config.model) {
+      const parts = this.config.model.split('/');
+      if (parts.length === 2) {
+        this.parsedModel = { providerID: parts[0], modelID: parts[1] };
+      } else {
+        this.parsedModel = { providerID: '', modelID: this.config.model };
+      }
+    }
   }
 
   /**
@@ -141,7 +154,12 @@ export class OpenCodeProvider implements LLMProvider {
     const body: {
       parts: Array<{ type: 'text'; text: string }>;
       system?: string;
+      model?: { providerID: string; modelID: string };
     } = { parts };
+
+    if (this.parsedModel) {
+      body.model = this.parsedModel;
+    }
 
     if (options?.system) {
       body.system = options.system;

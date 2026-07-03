@@ -235,6 +235,35 @@ export class ResearchEngine extends EventEmitter implements ResearchEvents {
   }
 
   /**
+   * Recovery: temuin riset yg statusnya 'running' atau 'queued' tapi
+   * gak ada di activeResearch (misal server mati mendadak / restart).
+   * Tandai sebagai 'failed' biar gak stuck selamanya.
+   */
+  async recoverStaleTasks(): Promise<number> {
+    let count = 0;
+    try {
+      const all = await this.storage.listResults(100, 0);
+      for (const r of all) {
+        if (r.status === 'running' || r.status === 'queued') {
+          const stillActive = this.activeResearch.has(r.id);
+          if (!stillActive) {
+            await this.storage.updateResult(r.id, {
+              status: 'failed',
+              error: 'Server restart — riset terputus. Silakan coba lagi.',
+              completedAt: new Date(),
+              progress: { phase: 'done', percent: 0, message: 'Terputus oleh restart server' },
+            });
+            count++;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[ResearchEngine] Gagal recover stale tasks:', err);
+    }
+    return count;
+  }
+
+  /**
    * Rerun research dengan ID yang sama — query bisa di-override.
    * Versi naik 1, status lama tetap di history (parentId chain).
    */
@@ -273,6 +302,105 @@ export class ResearchEngine extends EventEmitter implements ResearchEvents {
     }
 
     return newResult;
+  }
+
+  /**
+   * Retry research dengan ID yang SAMA (bukan bikin baru).
+   * Reset status, hapus error, lalu execute ulang.
+   * UI row tetap sama, progress bar jalan dari 0%.
+   */
+  async retryResearch(id: string): Promise<ResearchResult | null> {
+    const existing = await this.storage.getResult(id);
+    if (!existing) return null;
+
+    // Reset result — pake ID yg sama, query yg sama
+    const mergedQuery = this.mergeDefaults(existing.query);
+    const result: ResearchResult = {
+      id: existing.id,
+      query: mergedQuery,
+      status: 'queued',
+      sources: [],
+      report: undefined,
+      error: undefined,
+      completedAt: undefined,
+      progress: { phase: 'queued', percent: 0, message: 'Dalam antrian...' },
+      startedAt: new Date(),
+      createdAt: existing.createdAt,
+      version: (existing.version ?? 1) + 1,
+      parentId: existing.parentId,
+      tags: existing.tags,
+    };
+
+    // Simpan status queued
+    try {
+      await this.storage.saveResult(result);
+    } catch (err) {
+      console.warn('[ResearchEngine] Gagal simpan retry queued:', err);
+    }
+
+    this.emit('started', result);
+    const abortController = new AbortController();
+    this.activeResearch.set(result.id, abortController);
+
+    try {
+      result.status = 'running';
+      await this.storage.saveResult(result);
+
+      await this.updateProgress(result, 'searching', 5, 'Mencari sumber informasi...', true);
+      let allSources = 0;
+
+      for (const collector of this.collectors) {
+        if (abortController.signal.aborted) throw new Error('Riset dibatalkan');
+        try {
+          const sources = await collector.collect(mergedQuery);
+          result.sources.push(...sources);
+          allSources += sources.length;
+          await this.updateProgress(result, 'searching', 10 + Math.min((allSources / mergedQuery.maxSources) * 20, 20),
+            `Mengumpulkan sumber... (${allSources} ditemukan)`, true);
+        } catch (collectorError) {
+          console.warn(`[ResearchEngine] Collector ${collector.name} gagal:`, collectorError);
+        }
+      }
+
+      if (result.sources.length === 0) throw new Error('Tidak ada sumber yang berhasil dikumpulkan');
+      result.sources.sort((a, b) => (b.relevanceScore ?? 0) - (a.relevanceScore ?? 0));
+      if (result.sources.length > mergedQuery.maxSources) {
+        result.sources = result.sources.slice(0, mergedQuery.maxSources);
+      }
+
+      await this.updateProgress(result, 'processing', 40, 'Memproses dan menganalisis sumber...', true);
+
+      const storageWithIndex = this.storage as ResearchStorage & { indexSource(id: string, source: Source): Promise<void> };
+      if (typeof storageWithIndex.indexSource === 'function') {
+        for (const source of result.sources) {
+          try { await storageWithIndex.indexSource(result.id, source); } catch { /* non-fatal */ }
+        }
+      }
+
+      await this.updateProgress(result, 'synthesizing', 70, 'Mensintesis hasil riset...', true);
+      const report = await this.llm.synthesize(result.sources, mergedQuery);
+      result.report = report;
+
+      result.status = 'completed';
+      result.completedAt = new Date();
+      await this.updateProgress(result, 'done', 100, 'Riset selesai!', true);
+      await this.storage.saveResult(result);
+      this.emit('complete', result);
+      return result;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      result.status = 'failed';
+      result.error = errorMsg;
+      result.completedAt = new Date();
+      result.progress = { phase: 'done', percent: 0, message: `Gagal: ${errorMsg}` };
+      try { await this.storage.saveResult(result); } catch (err) {
+        console.error('[ResearchEngine] Gagal menyimpan hasil riset:', errorMsg, err);
+      }
+      this.emit('error', result.id, errorMsg);
+      return result;
+    } finally {
+      this.activeResearch.delete(result.id);
+    }
   }
 
   /**

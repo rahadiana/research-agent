@@ -295,6 +295,12 @@
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
         Back to Dashboard
       </a>
+      <% if (result.status === 'failed') { %>
+      <button onclick="retryResearch('<%= result.id %>')" class="flex items-center justify-center gap-2 w-full bg-amber-500/5 hover:bg-amber-500/10 text-amber-400 hover:text-amber-300 rounded-xl px-4 py-2.5 text-sm font-medium transition-all">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        Retry Research
+      </button>
+      <% } %>
       <button onclick="deleteAndBack('<%= result.id %>')" class="flex items-center justify-center gap-2 w-full bg-red-500/5 hover:bg-red-500/10 text-red-400 hover:text-red-300 rounded-xl px-4 py-2.5 text-sm font-medium transition-all">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
         Delete Research
@@ -341,6 +347,21 @@
       setTimeout(function() { location.reload(); }, 1000);
     }
   });
+
+  async function retryResearch(id) {
+    try {
+      var res = await fetch('/research/' + id + '/retry', { method: 'POST' });
+      if (res.ok) {
+        showToast('Retrying research...', 'info');
+        setTimeout(function() { location.reload(); }, 1000);
+      } else {
+        var data = await res.json();
+        alert(data.error || 'Failed to retry');
+      }
+    } catch {
+      alert('Network error');
+    }
+  }
 
   async function deleteAndBack(id) {
     if (!confirm('Delete this research?')) return;

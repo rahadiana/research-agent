@@ -155,6 +155,11 @@
                     <a href="/research/<%= r.id %>" class="p-2 text-slate-500 hover:text-slate-200 hover:bg-slate-700/50 rounded-lg transition-all" title="View details">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                     </a>
+                    <% if (r.status === 'failed') { %>
+                    <button onclick="retryResearch('<%= r.id %>')" class="p-2 text-slate-500 hover:text-amber-400 hover:bg-amber-500/10 rounded-lg transition-all" title="Retry">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    </button>
+                    <% } %>
                     <button onclick="deleteResearch('<%= r.id %>')" class="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all" title="Delete">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                     </button>
@@ -223,7 +228,81 @@
     }
   }
 
-  socket.on('research:started', function() { setTimeout(function() { location.reload(); }, 500); });
-  socket.on('research:progress', function() {});
-  socket.on('research:complete', function() { setTimeout(function() { location.reload(); }, 1500); });
+  async function retryResearch(id) {
+    try {
+      var res = await fetch('/research/' + id + '/retry', { method: 'POST' });
+      if (res.ok) {
+        showToast('Retrying research...', 'info');
+        // Socket.IO 'research:started' akan update row langsung
+      } else {
+        var data = await res.json();
+        alert(data.error || 'Failed to retry');
+      }
+    } catch {
+      alert('Network error');
+    }
+  }
+
+  socket.on('research:started', function(data) {
+    var row = document.getElementById('row-' + data.resultId);
+    if (row) {
+      // Update baris existing (retry) — reset ke queued
+      var badge = row.querySelector('.status-badge');
+      if (badge) {
+        badge.className = 'status-badge bg-blue-500/10 text-blue-400 border-blue-500/20';
+        badge.innerHTML = '<span class="status-dot bg-blue-400"></span>Queued';
+      }
+      var bar = document.getElementById('progress-' + data.resultId);
+      if (bar) {
+        bar.className = 'progress-bar h-full rounded-full progress-glow-amber';
+        bar.style.width = '0%';
+      }
+      // Sembunyikan tombol retry kalo ada
+      var retryBtn = row.querySelector('button[onclick*="retry"]');
+      if (retryBtn) retryBtn.style.display = 'none';
+    } else {
+      // Belum ada di tabel — tambahin baris baru dynamic
+      var tbody = document.querySelector('table tbody');
+      if (tbody) {
+        var emptyRow = tbody.querySelector('td[colspan]');
+        if (emptyRow) emptyRow.parentElement.remove();
+        var tr = document.createElement('tr');
+        tr.id = 'row-' + data.resultId;
+        tr.className = 'border-b border-slate-700/20 hover:bg-slate-700/20 transition-colors duration-150 fade-in';
+        tr.innerHTML = '<td class="px-6 py-3.5"><a href="/research/' + data.resultId + '" class="text-emerald-400 hover:text-emerald-300 font-medium transition-colors block truncate max-w-[200px] lg:max-w-[280px]">' + (data.topic || 'Research') + '</a></td>' +
+          '<td class="px-6 py-3.5"><span class="status-badge bg-blue-500/10 text-blue-400 border-blue-500/20"><span class="status-dot bg-blue-400"></span>Queued</span></td>' +
+          '<td class="px-6 py-3.5 text-slate-400 font-medium hidden sm:table-cell">0</td>' +
+          '<td class="px-6 py-3.5 hidden md:table-cell"><div class="flex items-center gap-2.5"><div class="flex-1 bg-slate-700/50 rounded-full h-2 overflow-hidden"><div id="progress-' + data.resultId + '" class="progress-bar h-full rounded-full progress-glow-amber" style="width:0%"></div></div><span class="text-xs text-slate-500 w-8 text-right font-medium">0%</span></div></td>' +
+          '<td class="px-6 py-3.5 text-slate-500 text-xs hidden lg:table-cell font-medium">Just now</td>' +
+          '<td class="px-6 py-3.5"><div class="flex items-center justify-end gap-1.5"><a href="/research/' + data.resultId + '" class="p-2 text-slate-500 hover:text-slate-200 hover:bg-slate-700/50 rounded-lg transition-all" title="View details"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg></a></div></td>';
+        tbody.prepend(tr);
+      }
+    }
+  });
+  socket.on('research:complete', function(data) {
+    // Update status badge jadi Completed
+    var row = document.getElementById('row-' + data.resultId);
+    if (row) {
+      var badge = row.querySelector('.status-badge');
+      if (badge) {
+        badge.className = 'status-badge bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+        badge.innerHTML = '<span class="status-dot bg-emerald-400"></span>Completed';
+      }
+      var bar = document.getElementById('progress-' + data.resultId);
+      if (bar) {
+        bar.className = 'progress-bar h-full rounded-full progress-glow';
+        bar.style.width = '100%';
+      }
+    }
+    // Update stats cards juga
+    fetch('/api/stats').then(function(r) { return r.json(); }).then(function(stats) {
+      var cards = document.querySelectorAll('.grid-cols-2 .text-3xl');
+      if (cards.length >= 4) {
+        cards[0].textContent = stats.total;
+        cards[1].textContent = stats.successRate + '%';
+        cards[2].textContent = stats.totalSources;
+        cards[3].textContent = stats.running;
+      }
+    }).catch(function() {});
+  });
 </script>

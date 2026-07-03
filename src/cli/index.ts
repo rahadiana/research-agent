@@ -199,7 +199,10 @@ async function createResearchEngine(): Promise<ResearchEngine> {
 
   if (useOpenCode) {
     const { OpenCodeProvider } = await import('../llm/opencode-provider.js');
-    const provider = new OpenCodeProvider({ autoStart: true });
+    const provider = new OpenCodeProvider({
+      autoStart: true,
+      model: process.env.OPENCODE_MODEL || undefined,
+    });
     await provider.initialize();
     llm = provider;
   } else {
@@ -213,7 +216,10 @@ async function createResearchEngine(): Promise<ResearchEngine> {
 
   const engine = new ResearchEngine(config, storage, llm);
 
-  engine.registerCollector(new OpencodeSearchCollector({ autoStart: true }));
+  engine.registerCollector(new OpencodeSearchCollector({
+    autoStart: true,
+    model: process.env.OPENCODE_MODEL || undefined,
+  }));
   engine.registerCollector(new PDFCollector());
 
   return engine;
@@ -847,10 +853,18 @@ async function handleScheduleRun(id: string): Promise<void> {
 async function handleDashboard(): Promise<void> {
   try {
     const engine = await createResearchEngine();
+    const scheduler = await createScheduler(engine);
+    scheduler.start();
     const port = parseInt(process.env.DASHBOARD_PORT || '3000', 10);
     const host = process.env.DASHBOARD_HOST || 'localhost';
-    const server = new DashboardServer(engine, port, host);
+    const server = new DashboardServer(engine, port, host, scheduler);
     await server.start();
+
+    // Recovery setelah dashboard server siap (biar ada listener event)
+    const recovered = await engine.recoverStaleTasks();
+    if (recovered > 0) {
+      console.log(chalk.yellow(`[Recovery] ${recovered} riset gagal (restart server).`));
+    }
   } catch (error) {
     console.log(chalk.red('Dashboard gagal dijalankan:'));
     console.log(chalk.red(error instanceof Error ? error.message : String(error)));
@@ -860,12 +874,14 @@ async function handleDashboard(): Promise<void> {
 
 async function handleConfig(): Promise<void> {
   const config = {
-    OPENAI_API_KEY: process.env.OPENAI_API_KEY ? chalk.green('\u2713 configured') : chalk.red('\u2717 not set'),
+    LLM_PROVIDER: process.env.OPENAI_API_KEY ? chalk.green('OpenAI') : chalk.cyan('OpenCode SDK'),
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY ? chalk.green('\u2713 configured') : chalk.cyan('\u25CC using OpenCode SDK'),
     OPENAI_MODEL: process.env.OPENAI_MODEL || 'gpt-4o-mini',
     SERPAPI_KEY: process.env.SERPAPI_KEY ? chalk.green('\u2713 configured') : chalk.yellow('\u25CB optional'),
     RESEARCH_DATA_DIR: DATA_DIR,
     RESEARCH_MAX_SOURCES: process.env.RESEARCH_MAX_SOURCES || '10',
     RESEARCH_DEPTH: process.env.RESEARCH_DEPTH || 'medium',
+    OPENCODE_MODEL: process.env.OPENCODE_MODEL ? chalk.cyan(process.env.OPENCODE_MODEL) : chalk.yellow('\u25CB auto'),
     RESEARCH_TIMEOUT: process.env.RESEARCH_TIMEOUT || '120000',
   };
 
@@ -1167,10 +1183,17 @@ if (isMainModule) {
   dotenv.config();
 
   if (!process.env.OPENAI_API_KEY) {
-    console.warn(chalk.yellow('\u26A0\uFE0F  OPENAI_API_KEY tidak ditemukan.'));
-    console.warn(chalk.dim('   Buat file .env atau set environment variable.'));
-    console.warn(chalk.dim('   Contoh: OPENAI_API_KEY=sk-... research run "topic"'));
-    console.warn('');
+    const useOpenCode = process.env.USE_OPENCODE !== 'false';
+    if (useOpenCode) {
+      console.info(chalk.cyan('\u2139\uFE0F  OPENAI_API_KEY tidak diset — menggunakan OpenCode SDK sebagai LLM default.'));
+      console.info(chalk.dim('   Untuk pakai OpenAI langsung, set OPENAI_API_KEY=sk-... di .env'));
+      console.info('');
+    } else {
+      console.warn(chalk.yellow('\u26A0\uFE0F  OPENAI_API_KEY tidak ditemukan.'));
+      console.warn(chalk.dim('   Buat file .env atau set environment variable.'));
+      console.warn(chalk.dim('   Contoh: OPENAI_API_KEY=sk-... research run "topic"'));
+      console.warn('');
+    }
   }
 
   program.parseAsync(process.argv).catch((error) => {
