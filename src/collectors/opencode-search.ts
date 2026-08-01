@@ -430,10 +430,14 @@ Cari ${askCount} hasil yang relevan — prioritaskan artikel orisinil, publikasi
       textContent = result.snippet;
     }
 
-    // Bersihkan artifact halaman cache/redirect Google:
-    // link relatif (mis. /httpservice/retry/enablejs) & meta refresh —
-    // kalau dibiarkan, jadi link 404 yang mengarah ke server dashboard kita.
+    // Bersihkan artifact halaman cache/redirect & HTML berbahaya:
+    // - <style> (mis. anti-scrape LinkedIn: display:none) & <script> — kalau
+    //   lolos ke render markdown, bisa menyembunyikan seluruh halaman dashboard
+    // - link relatif (mis. /httpservice/retry/enablejs) & meta refresh —
+    //   kalau dibiarkan, jadi link 404 yang mengarah ke server dashboard kita.
     textContent = textContent
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
       .replace(/<a\s+href="\/(?!\/)[^"]*"[^>]*>([\s\S]*?)<\/a>/gi, '$1')
       .replace(/<meta[^>]*url=[^>]*>/gi, '');
 
@@ -560,8 +564,10 @@ Cari ${askCount} hasil yang relevan — prioritaskan artikel orisinil, publikasi
           textContent = $('body').text().replace(/\s+/g, ' ').trim();
         }
 
-        // Bersihkan artifact link relatif & meta refresh (lihat scrapeUrl)
+        // Bersihkan artifact link relatif, meta refresh, style & script (lihat scrapeUrl)
         textContent = textContent
+          .replace(/<style[\s\S]*?<\/style>/gi, '')
+          .replace(/<script[\s\S]*?<\/script>/gi, '')
           .replace(/<a\s+href="\/(?!\/)[^"]*"[^>]*>([\s\S]*?)<\/a>/gi, '$1')
           .replace(/<meta[^>]*url=[^>]*>/gi, '');
 

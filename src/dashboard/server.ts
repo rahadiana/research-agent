@@ -75,18 +75,31 @@ function renderWithLayout(
  * Konversi ResearchResult report ke markdown string
  */
 /**
- * Netralkan link relatif & meta-refresh dari konten report (artifact halaman
- * cache Google seperti /httpservice/retry/enablejs) supaya tidak menjadi
- * link 404 yang mengarah ke server kita sendiri.
- * - `<a href="/path">teks</a>` → `teks`
- * - `[teks](/path)` → `teks`
- * - `<meta ... url=...>` → dihapus
+ * Sanitasi markdown report sebelum di-render — konten report berasal dari
+ * teks web yang di-scrape (UNTRUSTED). marked melewatkan raw HTML apa adanya,
+ * jadi konten scraped bisa menyuntik <style> (mis. display:none → halaman
+ * terlihat kosong), <script>, atau link berbahaya.
+ *
+ * Yang dilakukan:
+ * - Hapus blok <style>/<script> (dan isinya)
+ * - Netralkan link relatif (artifact Google cache: /httpservice/...)
+ * - Netralkan link javascript:/data:
+ * - Hapus SEMUA raw HTML tag yang tersisa (teksnya tetap dipertahankan)
  */
 export function sanitizeReportMarkdown(md: string): string {
   return md
+    // Blok style/script dihapus total (bisa menyembunyikan halaman / XSS)
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    // Link relatif (artifact halaman cache Google) → teks saja
     .replace(/<a\s+href="\/(?!\/)[^"]*"[^>]*>([\s\S]*?)<\/a>/gi, '$1')
     .replace(/\[([^\]]*)\]\(\/(?!\/)[^)\s]*\)/g, '$1')
-    .replace(/<meta[^>]*url=[^>]*>/gi, '');
+    // Link berbahaya javascript:/data: → dibuang
+    .replace(/\[([^\]]*)\]\((?:javascript|data):[^)]*\)/gi, '$1')
+    // Meta refresh → hapus
+    .replace(/<meta[^>]*url=[^>]*>/gi, '')
+    // Raw HTML tag tersisa (untrusted) → teksnya saja
+    .replace(/<[^>]*>/g, '');
 }
 
 /**

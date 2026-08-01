@@ -240,13 +240,61 @@ describe('sanitizeReportMarkdown', () => {
     expect(cleaned).not.toContain('/httpservice');
   });
 
-  it('TIDAK menyentuh link absolut (http/https)', () => {
+  it('raw HTML tag di-strip tapi markdown link absolut tetap utuh', () => {
     const md = 'Sumber: <a href="https://github.com/rahadiana">GitHub</a> dan [blog](https://rahadiana.blogspot.com/).';
 
     const cleaned = sanitizeReportMarkdown(md);
 
-    expect(cleaned).toContain('href="https://github.com/rahadiana"');
-    expect(cleaned).toContain('](https://rahadiana.blogspot.com/)');
+    // Raw HTML tag dihapus (teksnya tetap)
+    expect(cleaned).not.toContain('<a href');
+    expect(cleaned).toContain('GitHub');
+    // Markdown link (bukan raw HTML) tidak disentuh
+    expect(cleaned).toContain('[blog](https://rahadiana.blogspot.com/)');
+  });
+
+  it('menghapus <style> injeksi display:none dari konten scraped (bug halaman kosong)', () => {
+    const md = 'Profil LinkedIn:\n\n<style>table,div,span,p{display:none}</style>\n\nKlik <a href="/httpservice/retry/enablejs">di sini</a> jika tidak dialihkan.';
+
+    const cleaned = sanitizeReportMarkdown(md);
+
+    // Tidak boleh ada style display:none yang menyembunyikan halaman
+    expect(cleaned).not.toContain('<style');
+    expect(cleaned).not.toContain('display:none');
+    // Teks tetap ada
+    expect(cleaned).toContain('Profil LinkedIn');
+    expect(cleaned).toContain('di sini');
+  });
+
+  it('menghapus <script> injeksi', () => {
+    const md = 'Konten aman <script>alert("xss")</script> lanjutan.';
+
+    const cleaned = sanitizeReportMarkdown(md);
+
+    expect(cleaned).not.toContain('<script');
+    expect(cleaned).not.toContain('alert');
+    expect(cleaned).toContain('Konten aman');
+  });
+
+  it('menghapus semua raw HTML tag lain (untrusted) tapi mempertahankan teks', () => {
+    const md = 'Teks <iframe src="https://evil.example"></iframe> dengan <img src="x" onerror="alert(1)"> gambar.';
+
+    const cleaned = sanitizeReportMarkdown(md);
+
+    expect(cleaned).not.toContain('<iframe');
+    expect(cleaned).not.toContain('<img');
+    expect(cleaned).toContain('Teks');
+    expect(cleaned).toContain('dengan');
+  });
+
+  it('menetralkan link javascript: dan data:', () => {
+    const md = 'Jangan klik [di sini](javascript:alert(1)) atau [itu](data:text/html;base64,xxx).';
+
+    const cleaned = sanitizeReportMarkdown(md);
+
+    expect(cleaned).not.toContain('javascript:');
+    expect(cleaned).not.toContain('data:text/html');
+    expect(cleaned).toContain('di sini');
+    expect(cleaned).toContain('itu');
   });
 });
 
