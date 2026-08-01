@@ -116,8 +116,10 @@
               // Coba split by double newline dulu
               var byDouble = text.split(/\n\s*\n/).map(function(s) { return s.trim(); }).filter(Boolean);
               if (byDouble.length > 1) return byDouble;
-              // Gak ada double newline — split by kalimat (batas: .!? diikuti spasi + huruf besar/kutip)
-              var sentences = text.match(/[^.!?\s][^.!?]*[.!?](?:\s|$)/g) || [text];
+              // Split by kalimat — titik internal (domain/singkatan) tidak memecah kalimat,
+              // jadi teks di depan titik tidak hilang
+              var sentences = text.split(/(?<=[.!?])\s+(?=[A-Z0-9"'“])/).map(function(s) { return s.trim(); }).filter(Boolean);
+              if (sentences.length === 0) sentences = [text.trim()];
               // Kelompokkan 6-8 kalimat per paragraf biar gak kepotong2
               var groupSize = sentences.length > 20 ? 8 : 6;
               var paragraphs = [];

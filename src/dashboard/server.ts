@@ -123,6 +123,37 @@ function reportToExportMarkdown(result: ResearchResult): string {
 }
 
 /**
+ * Pecah teks jadi paragraf: prioritas double-newline, fallback split by kalimat.
+ *
+ * Split kalimat memakai lookbehind: titik/!? dianggap AKHIR kalimat HANYA jika
+ * diikuti spasi + huruf kapital/angka/kutip. Ini mencegah titik di dalam
+ * kalimat (domain "example.com", singkatan "e.g.", "U.S.A") memecah kalimat
+ * di tengah dan MEMBUANG teks di depannya.
+ */
+export function splitIntoParagraphs(text: string): string[] {
+  if (!text) return [];
+
+  const byDouble = text.split(/\n\s*\n/).map((s) => s.trim()).filter(Boolean);
+  if (byDouble.length > 1) return byDouble;
+
+  // Split by kalimat — titik internal (domain/singkatan) tidak memecah kalimat
+  let sentences = text
+    .split(/(?<=[.!?])\s+(?=[A-Z0-9"'“])/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (sentences.length === 0) sentences = [text.trim()];
+
+  // Group 7-8 kalimat per paragraf biar gak kepotong2 kecil
+  const groupSize = sentences.length > 20 ? 8 : 6;
+  const chunks: string[] = [];
+  for (let i = 0; i < sentences.length; i += groupSize) {
+    const chunk = sentences.slice(i, i + groupSize).join(' ').trim();
+    if (chunk) chunks.push(chunk);
+  }
+  return chunks.length > 0 ? chunks : [text.trim()];
+}
+
+/**
  * Konversi HANYA sections report ke markdown — untuk ditampilkan di dashboard.
  * Summary, Key Findings, Conclusions, References sudah di-render oleh EJS card.
  */
@@ -130,33 +161,14 @@ function reportSectionsToMarkdown(result: ResearchResult): string {
   const report = result.report;
   if (!report) return '';
 
-  /**
-   * Split teks jadi paragraf: prioritas double-newline, fallback split by kalimat.
-   */
-  function toParagraphs(text: string): string[] {
-    if (!text) return [];
-    const byDouble = text.split(/\n\s*\n/).map(s => s.trim()).filter(Boolean);
-    if (byDouble.length > 1) return byDouble;
-    // Split by kalimat: . ! ? diikuti spasi + huruf besar
-    const sentences = text.match(/[^.!?\s][^.!?]*[.!?](?:\s|$)/g) || [text];
-    // Group 7-8 kalimat per paragraf biar gak kepotong2 kecil
-    const groupSize = sentences.length > 20 ? 8 : 6;
-    const chunks: string[] = [];
-    for (let i = 0; i < sentences.length; i += groupSize) {
-      const chunk = sentences.slice(i, i + groupSize).join(' ').trim();
-      if (chunk) chunks.push(chunk);
-    }
-    return chunks.length > 0 ? chunks : [text.trim()];
-  }
-
   const parts: string[] = [];
 
   for (const section of report.sections) {
-    const paragraphs = toParagraphs(section.content);
+    const paragraphs = splitIntoParagraphs(section.content);
     parts.push(`## ${section.heading}\n\n${paragraphs.join('\n\n')}`);
     if (section.subsections) {
       for (const sub of section.subsections) {
-        const subParagraphs = toParagraphs(sub.content);
+        const subParagraphs = splitIntoParagraphs(sub.content);
         parts.push(`### ${sub.heading}\n\n${subParagraphs.join('\n\n')}`);
       }
     }

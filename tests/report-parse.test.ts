@@ -10,6 +10,7 @@ import { describe, it, expect } from 'vitest';
 
 import { parseReportResponse } from '../src/llm/opencode-provider.js';
 import { OpenAIProvider } from '../src/llm/llm-client.js';
+import { splitIntoParagraphs } from '../src/dashboard/server.js';
 import type { ResearchQuery, Source, ResearchReport } from '../src/types/index.js';
 
 // ---------------------------------------------------------------------------
@@ -112,11 +113,99 @@ describe('parseReportResponse (OpenCode)', () => {
     assertNoEmptyPlaceholder(report);
     expect(report.sections.length).toBeGreaterThan(0);
   });
+
+  it('JSON terpotong (unbalanced braces) → summary TIDAK berupa JSON mentah', () => {
+    // Bug: LLM output terpotong di tengah — fallback lama menyalin JSON mentah sebagai summary
+    const raw = '{"title":"Profil X","summary":"Ringkasan nyata yang bagus sekali untuk topik ini","keyFindings":["F1","F2"],"sections":[';
+
+    const report = parseReportResponse(raw, QUERY, createSources());
+
+    // Summary harus berisi teks yang diselamatkan dari field summary JSON
+    expect(report.summary).toContain('Ringkasan nyata yang bagus');
+    // ...BUKAN JSON mentah
+    expect(report.summary.startsWith('{"')).toBe(false);
+    expect(report.summary).not.toContain('"title"');
+    assertNoEmptyPlaceholder(report);
+  });
+
+  it('JSON terpotong tanpa field summary → fallback ke ringkasan source', () => {
+    const raw = '{"title":"Profil X","keyFindings":["F1","F2"],"sections":[{"heading":"A","content":"';
+
+    const report = parseReportResponse(raw, QUERY, createSources());
+
+    assertNoEmptyPlaceholder(report);
+    expect(report.summary.startsWith('{"')).toBe(false);
+    expect(report.summary).not.toContain('"keyFindings"');
+  });
 });
 
 // ---------------------------------------------------------------------------
-// OpenAIProvider.parseSynthesisResponse (private method, dipanggil via cast)
+// splitIntoParagraphs (dashboard rendering — Summary & Report sections)
 // ---------------------------------------------------------------------------
+
+describe('splitIntoParagraphs', () => {
+  it('tidak membuang teks di depan titik internal domain (bug "nusantaracode.com")', () => {
+    const text =
+      'Laporan ini memetakan profil digital Rahadiana Nugraha yang tersebar di GitHub, LinkedIn, blog pribadi, serta platform nusantaracode.com. Berdasarkan analisis 15 sumber, Rahadiana tampil sebagai individu yang sangat mengandalkan shell scripting.';
+
+    const parts = splitIntoParagraphs(text);
+
+    // Teks awal KALIMAT PERTAMA tidak boleh hilang
+    const joined = parts.join(' ');
+    expect(joined).toContain('Laporan ini memetakan profil digital');
+    expect(joined).toContain('nusantaracode.com. Berdasarkan');
+    expect(joined).toContain('Berdasarkan analisis 15 sumber');
+  });
+
+  it('singkatan dengan titik internal (e.g., U.S.A.) tidak memecah kalimat', () => {
+    const text = 'Beberapa negara seperti U.S.A. dan U.K. memiliki aturan berbeda. Ini kalimat kedua yang panjang sekali.';
+
+    const parts = splitIntoParagraphs(text);
+
+    const joined = parts.join(' ');
+    expect(joined).toContain('U.S.A. dan U.K. memiliki aturan berbeda.');
+    expect(joined).toContain('Ini kalimat kedua');
+  });
+
+  it('kalimat normal tidak ada yang hilang (gabungan tetap utuh)', () => {
+    const text = 'Kalimat pertama berakhir di sini. Kalimat kedua dimulai dengan huruf kapital. Kalimat ketiga juga!';
+
+    const parts = splitIntoParagraphs(text);
+    const joined = parts.join(' ');
+
+    expect(joined).toContain('Kalimat pertama berakhir di sini.');
+    expect(joined).toContain('Kalimat kedua dimulai');
+    expect(joined).toContain('Kalimat ketiga juga!');
+  });
+
+  it('banyak kalimat (>6) → dipecah jadi beberapa paragraf', () => {
+    const text = Array.from(
+      { length: 8 },
+      (_, i) => `Kalimat nomor ${i + 1} dengan isi yang cukup panjang dan jelas.`,
+    ).join(' ');
+
+    const parts = splitIntoParagraphs(text);
+
+    expect(parts.length).toBeGreaterThan(1);
+    // Semua kalimat tetap ada
+    for (let i = 1; i <= 8; i++) {
+      expect(parts.join(' ')).toContain(`Kalimat nomor ${i}`);
+    }
+  });
+
+  it('prioritas double newline', () => {
+    const text = 'Paragraf satu dengan titik di tengah example.com domain.\n\nParagraf dua.';
+
+    const parts = splitIntoParagraphs(text);
+
+    expect(parts).toHaveLength(2);
+    expect(parts[0]).toContain('example.com');
+  });
+
+  it('teks kosong → []', () => {
+    expect(splitIntoParagraphs('')).toEqual([]);
+  });
+});
 
 describe('OpenAIProvider.parseSynthesisResponse', () => {
   const provider = new OpenAIProvider({ apiKey: 'sk-test' }) as unknown as {

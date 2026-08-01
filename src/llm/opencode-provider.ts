@@ -157,10 +157,36 @@ function buildFallbackReport(raw: string, query: ResearchQuery, sources: Source[
   }
 
   const rawSummary = lines.slice(0, 5).join(' ');
-  const summary =
-    rawSummary ||
-    sources.find((s) => s.summary)?.summary ||
-    `Laporan untuk topik "${query.topic}" disusun dari ${sources.length} sumber yang berhasil dikumpulkan.`;
+
+  // JANGAN jadikan teks JSON mentah sebagai summary (output LLM terpotong/tidak valid).
+  // Urutan prioritas:
+  //   1. Raw text biasa (bukan JSON)
+  //   2. Salvage field "summary" dari JSON terpotong
+  //   3. Ringkasan dari source
+  //   4. Kalimat generik
+  const trimmedRaw = rawSummary.trim();
+  const looksLikeJson = trimmedRaw.startsWith('{') || trimmedRaw.startsWith('[');
+
+  let summary = '';
+  if (!looksLikeJson) {
+    summary = rawSummary;
+  } else {
+    // Coba ambil "summary":"..." dari JSON (mungkin terpotong setelahnya)
+    const salvageMatch = trimmedRaw.match(/"summary"\s*:\s*"((?:[^"\\]|\\.)*)"/i);
+    if (salvageMatch?.[1]) {
+      try {
+        summary = JSON.parse(`"${salvageMatch[1]}"`) as string;
+      } catch {
+        // escapes rusak — abaikan, lanjut ke source summary
+      }
+    }
+  }
+
+  if (!summary.trim()) {
+    summary =
+      sources.find((s) => s.summary)?.summary ||
+      `Laporan untuk topik "${query.topic}" disusun dari ${sources.length} sumber yang berhasil dikumpulkan.`;
+  }
 
   return {
     title: `Laporan: ${query.topic}`,
