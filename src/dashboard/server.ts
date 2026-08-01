@@ -9,6 +9,7 @@ import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { marked } from 'marked';
+import { buildFinalReportMarkdown } from '../export/final-report.js';
 import type { ResearchEngine } from '../core/research-engine.js';
 import type { ResearchScheduler } from '../core/scheduler.js';
 import type {
@@ -460,6 +461,48 @@ export class DashboardServer {
           default:
             res.status(400).send('Invalid format. Use: markdown, json, html');
         }
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        res.status(500).send(`Error: ${msg}`);
+      }
+    });
+
+    // ----- Halaman Final Report (gabungan induk + sub-query) -----
+    this.app.get('/research/:id/final-report', async (req, res) => {
+      try {
+        const root = await this.engine.getResult(req.params.id);
+        if (!root) {
+          res.status(404).send('Research not found');
+          return;
+        }
+
+        const tree = await this.engine.getResearchTree(req.params.id);
+        const md = buildFinalReportMarkdown(root, tree);
+        const reportHtml = await marked.parse(md);
+
+        renderWithLayout(res, 'final-report', { root, tree, reportHtml });
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        res.status(500).send(`Error: ${msg}`);
+      }
+    });
+
+    // ----- Export Final Report (gabungan) ke Markdown -----
+    this.app.get('/research/:id/final-report/export/markdown', async (req, res) => {
+      try {
+        const root = await this.engine.getResult(req.params.id);
+        if (!root) {
+          res.status(404).send('Research not found');
+          return;
+        }
+
+        const tree = await this.engine.getResearchTree(req.params.id);
+        const md = buildFinalReportMarkdown(root, tree);
+        const filename = `final-report-${root.query.topic.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40) || 'research'}.md`;
+
+        res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(md);
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         res.status(500).send(`Error: ${msg}`);

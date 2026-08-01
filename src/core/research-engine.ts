@@ -553,6 +553,36 @@ export class ResearchEngine extends EventEmitter implements ResearchEvents {
   }
 
   /**
+   * Kumpulkan seluruh pohon riset dari sebuah root: root + semua descendant
+   * (sub-research, termasuk sub-sub-research) secara BFS, diurutkan createdAt.
+   * Anti-cycle via visited set.
+   *
+   * @returns Array riset: index 0 = root, sisanya descendant (parent selalu
+   *          muncul sebelum child-nya)
+   */
+  async getResearchTree(rootId: string): Promise<ResearchResult[]> {
+    const root = await this.storage.getResult(rootId);
+    if (!root) return [];
+
+    const tree: ResearchResult[] = [root];
+    const visited = new Set<string>([rootId]);
+    const queue: string[] = [rootId];
+
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+      const children = await this.storage.searchByParent(currentId);
+      for (const child of children) {
+        if (visited.has(child.id)) continue;
+        visited.add(child.id);
+        tree.push(child);
+        queue.push(child.id);
+      }
+    }
+
+    return tree;
+  }
+
+  /**
    * Dapatkan semua sub-research dari parent
    */
   async getSubResearch(parentId: string): Promise<ResearchResult[]> {
