@@ -45,6 +45,19 @@ const CHARS_PER_TOKEN = 4;
 const SAFE_CONTEXT_LIMIT = 100_000; // tokens — safety cap for 128K models
 const CONTEXT_BUFFER = 2000; // tokens reserved for system prompt + instructions
 
+/**
+ * Validasi bahwa objek hasil parse JSON dari LLM benar-benar punya
+ * struktur report riset. Tanpa ini, JSON valid-tapi-salah-struktur
+ * (misal {"error": "..."} atau output terpotong) menghasilkan report kosong.
+ */
+function isValidReportShape(parsed: Record<string, unknown>): boolean {
+  const hasTitle = typeof parsed.title === 'string' && parsed.title.trim().length > 0;
+  const hasSummary = typeof parsed.summary === 'string' && parsed.summary.trim().length > 0;
+  const hasFindings = Array.isArray(parsed.keyFindings) && parsed.keyFindings.length > 0;
+  const hasSections = Array.isArray(parsed.sections) && parsed.sections.length > 0;
+  return hasTitle || hasSummary || hasFindings || hasSections;
+}
+
 // ---------------------------------------------------------------------------
 // Prompt Templates
 // ---------------------------------------------------------------------------
@@ -429,11 +442,20 @@ export class OpenAIProvider implements LLMProvider {
         references?: string[];
       };
 
+      // JSON valid tapi bukan struktur report → anggap gagal, pakai fallback
+      if (!isValidReportShape(parsed)) {
+        throw new Error('LLM response is valid JSON but not a research report shape');
+      }
+
+      const sections = this.normalizeSections(parsed.sections);
+      const summary = (parsed.summary ?? '').trim();
+
       return {
         title: parsed.title ?? `Research Report: ${query.topic}`,
-        summary: parsed.summary ?? '',
+        // Jangan biarkan summary kosong — turunkan dari section pertama jika perlu
+        summary: summary || sections[0]?.content?.slice(0, 500) || '',
         keyFindings: parsed.keyFindings ?? [],
-        sections: this.normalizeSections(parsed.sections),
+        sections,
         conclusions: parsed.conclusions ?? [],
         references: parsed.references ?? sources.map((s) => s.url),
         generatedAt: new Date(),
@@ -489,9 +511,26 @@ export class OpenAIProvider implements LLMProvider {
       }
     }
 
+    // Raw tidak punya struktur markdown — bangun sections dari sources
+    // supaya report tetap berguna (bukan placeholder kosong).
+    if (sections.length === 0) {
+      for (const source of sources.slice(0, 10)) {
+        const content = (source.content || source.summary || '').replace(/\s+/g, ' ').trim();
+        if (content.length > 40) {
+          sections.push({ heading: source.title || source.url, content: content.slice(0, 4000) });
+        }
+      }
+    }
+
+    const sourceSummary = sources.find((s) => s.summary)?.summary;
+    const summary =
+      sections.find((s) => /summary|overview/i.test(s.heading))?.content ??
+      sourceSummary ??
+      raw.slice(0, 500);
+
     return {
       title,
-      summary: sections.find((s) => /summary|overview/i.test(s.heading))?.content ?? raw.slice(0, 500),
+      summary: summary.slice(0, 2000),
       keyFindings: sections
         .find((s) => /key findings|findings/i.test(s.heading))
         ?.content.split('\n')

@@ -1,0 +1,397 @@
+<% var title = 'Research Graph'; %>
+
+<style>
+  .graph-tooltip {
+    position: absolute;
+    pointer-events: none;
+    z-index: 60;
+    background: rgba(15, 23, 42, 0.95);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.7rem;
+    color: #cbd5e1;
+    max-width: 260px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    white-space: normal;
+  }
+  .graph-node { cursor: pointer; transition: opacity 0.15s ease; }
+  .graph-node:hover { opacity: 0.85; }
+  .graph-node.highlighted .graph-node-circle { stroke: #fbbf24 !important; stroke-width: 3px !important; filter: drop-shadow(0 0 8px rgba(251, 191, 36, 0.7)); }
+  .graph-node-label { pointer-events: none; }
+  @keyframes nodePulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } }
+  .graph-node.pulse { animation: nodePulse 0.8s ease 3; }
+</style>
+
+<!-- Header -->
+<div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+  <div>
+    <h1 class="text-2xl font-bold text-white flex items-center gap-3">
+      <svg class="w-7 h-7 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+      Research Graph
+    </h1>
+    <p class="text-xs text-slate-500 mt-1.5">Semua riset &amp; sub-research saling terhubung. Klik node untuk membuka detail.</p>
+  </div>
+  <div class="flex items-center gap-3">
+    <div id="graph-stats" class="text-xs text-slate-500"></div>
+    <button onclick="loadGraph()" class="flex items-center gap-1.5 bg-slate-800/50 hover:bg-slate-700/50 text-slate-300 hover:text-slate-100 px-3.5 py-2 rounded-xl text-xs font-medium border border-slate-600/30 transition-all">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+      Refresh
+    </button>
+  </div>
+</div>
+
+<!-- Legend -->
+<div class="flex flex-wrap items-center gap-4 mb-4 text-xs text-slate-400">
+  <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span> Completed</span>
+  <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span> Running</span>
+  <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-blue-400"></span> Queued</span>
+  <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-red-400"></span> Failed</span>
+  <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-slate-400"></span> Cancelled</span>
+  <span class="text-slate-600 hidden sm:inline">|</span>
+  <span class="text-slate-500 hidden sm:inline">Drag node untuk memindahkan · scroll untuk zoom</span>
+</div>
+
+<!-- Graph canvas -->
+<div class="glass-card rounded-2xl overflow-hidden relative" style="height: calc(100vh - 260px); min-height: 480px;">
+  <div id="graph-empty" class="hidden absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-500">
+    <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+    <p class="text-sm">Belum ada riset — buat riset dulu dari dashboard, lalu sub-research akan muncul di sini.</p>
+    <a href="/" class="text-xs text-emerald-400 hover:text-emerald-300 mt-1">Ke Dashboard →</a>
+  </div>
+  <div id="graph-loading" class="absolute inset-0 flex items-center justify-center">
+    <div class="w-10 h-10 border-[3px] border-emerald-400/30 border-t-emerald-400 rounded-full animate-spin"></div>
+  </div>
+  <svg id="graph-svg" class="w-full h-full"></svg>
+</div>
+
+<script>
+  const STATUS_COLORS = {
+    completed: '#10b981',
+    running: '#fbbf24',
+    queued: '#60a5fa',
+    failed: '#f87171',
+    cancelled: '#94a3b8'
+  };
+  const STATUS_LABELS = {
+    completed: 'Completed', running: 'Running', queued: 'Queued', failed: 'Failed', cancelled: 'Cancelled'
+  };
+
+  let graphState = null; // { nodes: [{id,label,status,sources,childCount}], edges: [] }
+  let positions = new Map(); // id -> {x, y}
+  let velocities = new Map(); // id -> {x, y}
+  let dragNode = null;
+
+  const svg = document.getElementById('graph-svg');
+  const tooltip = document.createElement('div');
+  tooltip.className = 'graph-tooltip';
+  tooltip.style.display = 'none';
+  document.querySelector('.glass-card').appendChild(tooltip);
+
+  function statusColor(status) { return STATUS_COLORS[status] || '#94a3b8'; }
+
+  function nodeRadius(node) {
+    return 9 + Math.min(node.childCount || 0, 6) * 2 + Math.min(node.sources || 0, 10) * 0.3;
+  }
+
+  async function loadGraph() {
+    const loading = document.getElementById('graph-loading');
+    const empty = document.getElementById('graph-empty');
+    loading.classList.remove('hidden');
+    empty.classList.add('hidden');
+    try {
+      const res = await fetch('/api/graph');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Gagal load graph');
+      graphState = data;
+      if (!data.nodes || data.nodes.length === 0) {
+        empty.classList.remove('hidden');
+        svg.innerHTML = '';
+        document.getElementById('graph-stats').textContent = '';
+        loading.classList.add('hidden');
+        return;
+      }
+      initPositions();
+      const statsEl = document.getElementById('graph-stats');
+      const disconnected = data.nodes.filter(n => !n.parentId).length;
+      statsEl.textContent = data.nodes.length + ' nodes · ' + data.edges.length + ' edges · ' + disconnected + ' root';
+      render();
+      // Highlight dari URL hash (#researchId)
+      const hashId = window.location.hash.replace('#', '');
+      if (hashId && positions.has(hashId)) highlightNode(hashId);
+    } catch (err) {
+      empty.classList.remove('hidden');
+      empty.querySelector('p').textContent = 'Gagal load graph: ' + err.message;
+      svg.innerHTML = '';
+    } finally {
+      loading.classList.add('hidden');
+    }
+  }
+
+  function initPositions() {
+    const nodes = graphState.nodes;
+    const W = svg.clientWidth || 900;
+    const H = svg.clientHeight || 600;
+    const cx = W / 2, cy = H / 2;
+    positions = new Map();
+    velocities = new Map();
+    if (nodes.length === 1) {
+      positions.set(nodes[0].id, { x: cx, y: cy });
+      velocities.set(nodes[0].id, { x: 0, y: 0 });
+      return;
+    }
+    // Seeds: lingkaran + jitter biar gak menumpuk di titik yang sama
+    nodes.forEach((n, i) => {
+      const angle = (i / nodes.length) * Math.PI * 2;
+      const radius = Math.min(W, H) * 0.35;
+      positions.set(n.id, {
+        x: cx + Math.cos(angle) * radius + (Math.random() - 0.5) * 40,
+        y: cy + Math.sin(angle) * radius + (Math.random() - 0.5) * 40
+      });
+      velocities.set(n.id, { x: 0, y: 0 });
+    });
+  }
+
+  // Force-directed simulation — repulsion + spring + gravity
+  function simulate() {
+    const nodes = graphState.nodes;
+    const W = svg.clientWidth || 900;
+    const H = svg.clientHeight || 600;
+    const cx = W / 2, cy = H / 2;
+    const area = W * H;
+    const k = Math.sqrt(area / Math.max(nodes.length, 1)) * 0.9; // ideal distance
+    const repulsion = k * k * 1.2;
+    const gravity = 0.008;
+
+    // Reset forces
+    const forces = new Map();
+    nodes.forEach(n => forces.set(n.id, { fx: 0, fy: 0 }));
+
+    // Repulsion (pairwise)
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const a = positions.get(nodes[i].id);
+        const b = positions.get(nodes[j].id);
+        let dx = a.x - b.x, dy = a.y - b.y;
+        let dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 1) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; dist = 1; }
+        const force = repulsion / (dist * dist);
+        const fx = (dx / dist) * force;
+        const fy = (dy / dist) * force;
+        forces.get(nodes[i].id).fx += fx;
+        forces.get(nodes[i].id).fy += fy;
+        forces.get(nodes[j].id).fx -= fx;
+        forces.get(nodes[j].id).fy -= fy;
+      }
+    }
+
+    // Springs (edges)
+    const restLength = k * 1.1;
+    const springK = 0.04;
+    graphState.edges.forEach(edge => {
+      const a = positions.get(edge.from);
+      const b = positions.get(edge.to);
+      if (!a || !b) return;
+      let dx = b.x - a.x, dy = b.y - a.y;
+      let dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 1) dist = 1;
+      const force = springK * (dist - restLength);
+      const fx = (dx / dist) * force;
+      const fy = (dy / dist) * force;
+      forces.get(edge.from).fx += fx;
+      forces.get(edge.from).fy += fy;
+      forces.get(edge.to).fx -= fx;
+      forces.get(edge.to).fy -= fy;
+    });
+
+    // Apply forces + gravity + damping
+    nodes.forEach(n => {
+      const pos = positions.get(n.id);
+      const vel = velocities.get(n.id);
+      const f = forces.get(n.id);
+      vel.x = (vel.x + f.fx) * 0.85;
+      vel.y = (vel.y + f.fy) * 0.85;
+      // Gravity ke center
+      vel.x += (cx - pos.x) * gravity;
+      vel.y += (cy - pos.y) * gravity;
+      const maxSpeed = 3;
+      const speed = Math.sqrt(vel.x * vel.x + vel.y * vel.y);
+      if (speed > maxSpeed) { vel.x = (vel.x / speed) * maxSpeed; vel.y = (vel.y / speed) * maxSpeed; }
+      pos.x += vel.x;
+      pos.y += vel.y;
+      // Keep inside viewport
+      pos.x = Math.max(30, Math.min(W - 30, pos.x));
+      pos.y = Math.max(30, Math.min(H - 30, pos.y));
+    });
+  }
+
+  function render() {
+    const W = svg.clientWidth || 900;
+    const H = svg.clientHeight || 600;
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    svg.innerHTML = '';
+
+    // Defs: arrow marker
+    const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+    const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+    marker.setAttribute('id', 'arrowhead');
+    marker.setAttribute('viewBox', '0 0 10 10');
+    marker.setAttribute('refX', '20');
+    marker.setAttribute('refY', '5');
+    marker.setAttribute('markerWidth', '5');
+    marker.setAttribute('markerHeight', '5');
+    marker.setAttribute('orient', 'auto-start-reverse');
+    const arrowPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    arrowPath.setAttribute('d', 'M 0 0 L 10 5 L 0 10 z');
+    arrowPath.setAttribute('fill', '#475569');
+    marker.appendChild(arrowPath);
+    defs.appendChild(marker);
+    svg.appendChild(defs);
+
+    // Edges
+    graphState.edges.forEach(edge => {
+      const a = positions.get(edge.from);
+      const b = positions.get(edge.to);
+      if (!a || !b) return;
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', a.x);
+      line.setAttribute('y1', a.y);
+      line.setAttribute('x2', b.x);
+      line.setAttribute('y2', b.y);
+      line.setAttribute('stroke', '#475569');
+      line.setAttribute('stroke-width', '1.2');
+      line.setAttribute('opacity', '0.55');
+      line.setAttribute('marker-end', 'url(#arrowhead)');
+      svg.appendChild(line);
+    });
+
+    // Nodes
+    graphState.nodes.forEach(n => {
+      const pos = positions.get(n.id);
+      if (!pos) return;
+      const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      group.setAttribute('class', 'graph-node');
+      group.setAttribute('data-id', n.id);
+
+      // Circle
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('class', 'graph-node-circle');
+      circle.setAttribute('cx', pos.x);
+      circle.setAttribute('cy', pos.y);
+      const r = nodeRadius(n);
+      circle.setAttribute('r', r);
+      circle.setAttribute('fill', statusColor(n.status));
+      circle.setAttribute('fill-opacity', '0.85');
+      circle.setAttribute('stroke', '#0f172a');
+      circle.setAttribute('stroke-width', '1.5');
+      group.appendChild(circle);
+
+      // Label
+      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      label.setAttribute('class', 'graph-node-label');
+      label.setAttribute('x', pos.x);
+      label.setAttribute('y', pos.y + r + 12);
+      label.setAttribute('text-anchor', 'middle');
+      label.setAttribute('font-size', '10');
+      label.setAttribute('fill', '#94a3b8');
+      label.textContent = n.label.length > 26 ? n.label.slice(0, 25) + '…' : n.label;
+      group.appendChild(label);
+
+      // Tooltip
+      group.addEventListener('mouseenter', function(ev) {
+        const childCount = graphState.edges.filter(e => e.from === n.id).length;
+        tooltip.innerHTML =
+          '<div class="font-semibold text-slate-200 mb-0.5">' + escapeHtml(n.label) + '</div>' +
+          '<div class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full" style="background:' + statusColor(n.status) + '"></span>' + (STATUS_LABELS[n.status] || n.status) + '</div>' +
+          '<div class="text-slate-500 mt-0.5">' + n.sources + ' sources · ' + childCount + ' branch' + (childCount === 1 ? '' : 'es') + '</div>' +
+          '<div class="text-slate-500 truncate">' + escapeHtml(n.id.slice(0, 8)) + '</div>';
+        tooltip.style.display = 'block';
+        positionTooltip(ev);
+      });
+      group.addEventListener('mousemove', positionTooltip);
+      group.addEventListener('mouseleave', function() { tooltip.style.display = 'none'; });
+
+      // Click → detail
+      group.addEventListener('click', function() {
+        window.location.href = '/research/' + n.id;
+      });
+
+      // Drag
+      group.addEventListener('mousedown', function(ev) {
+        ev.stopPropagation();
+        dragNode = { id: n.id, offsetX: ev.clientX - pos.x, offsetY: ev.clientY - pos.y };
+        group.style.cursor = 'grabbing';
+      });
+
+      svg.appendChild(group);
+    });
+  }
+
+  function positionTooltip(ev) {
+    const rect = svg.getBoundingClientRect();
+    let x = ev.clientX - rect.left + 14;
+    let y = ev.clientY - rect.top - 10;
+    if (x + 260 > rect.width) x = ev.clientX - rect.left - 270;
+    if (y < 10) y = 10;
+    tooltip.style.left = x + 'px';
+    tooltip.style.top = y + 'px';
+  }
+
+  function highlightNode(id) {
+    const g = svg.querySelector('.graph-node[data-id="' + id + '"]');
+    if (!g) return;
+    g.classList.add('highlighted', 'pulse');
+    setTimeout(function() { g.classList.remove('pulse'); }, 2600);
+  }
+
+  // Animation loop
+  let animating = false;
+  function tick() {
+    if (!graphState || graphState.nodes.length === 0) { animating = false; return; }
+    simulate();
+    render();
+    // Highlight hash yang masih ada
+    const hashId = window.location.hash.replace('#', '');
+    if (hashId && positions.has(hashId)) {
+      const g = svg.querySelector('.graph-node[data-id="' + hashId + '"]');
+      if (g && !g.classList.contains('highlighted')) g.classList.add('highlighted');
+    }
+    requestAnimationFrame(tick);
+  }
+
+  // Drag handling (global)
+  document.addEventListener('mousemove', function(ev) {
+    if (!dragNode) return;
+    const rect = svg.getBoundingClientRect();
+    const pos = positions.get(dragNode.id);
+    if (pos) {
+      pos.x = ev.clientX - rect.left - dragNode.offsetX;
+      pos.y = ev.clientY - rect.top - dragNode.offsetY;
+    }
+  });
+  document.addEventListener('mouseup', function() {
+    dragNode = null;
+    svg.querySelectorAll('.graph-node').forEach(function(g) { g.style.cursor = 'grab'; });
+  });
+
+  // Zoom (wheel) — sederhana: skip, cukup drag & auto-layout
+  window.addEventListener('hashchange', function() {
+    const id = window.location.hash.replace('#', '');
+    if (id && positions.has(id)) highlightNode(id);
+  });
+
+  function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  // Start
+  loadGraph();
+  setTimeout(function() {
+    if (graphState && graphState.nodes.length > 0 && !animating) {
+      animating = true;
+      tick();
+    }
+  }, 100);
+</script>

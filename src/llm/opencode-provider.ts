@@ -7,7 +7,7 @@
  * @module llm/opencode-provider
  */
 
-import type { LLMProvider, ResearchReport, Source, ResearchQuery } from '../types/index.js';
+import type { LLMProvider, ResearchReport, ReportSection, Source, ResearchQuery } from '../types/index.js';
 
 // ─── Helpers ──────────────────────────────────────────────────
 
@@ -16,6 +16,203 @@ import type { LLMProvider, ResearchReport, Source, ResearchQuery } from '../type
  * dengan bahasa yang digunakan pada input user.
  */
 const LANG_INSTRUCTION = 'Gunakan bahasa yang SAMA dengan bahasa yang digunakan pada input/user.';
+
+// ─── JSON Report Parsing (module-level, testable) ──────────────────
+
+/**
+ * Ekstrak JSON object dari teks LLM response.
+ * Handle markdown code blocks, teks sebelum/sesudah, nested braces.
+ */
+function extractJSON(text: string): Record<string, unknown> | null {
+  if (!text) return null;
+
+  // Strategy 1: Coba parse langsung
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    // lanjut
+  }
+
+  // Strategy 2: Hapus markdown code blocks, lalu coba parse
+  const noCodeBlock = text
+    .replace(/```(?:json|javascript)?\s*/gi, '')
+    .replace(/\s*```/g, '')
+    .trim();
+  if (noCodeBlock !== text) {
+    try {
+      return JSON.parse(noCodeBlock) as Record<string, unknown>;
+    } catch {
+      // lanjut
+    }
+  }
+
+  // Strategy 3: Cari JSON object ({...}) dengan brace counting
+  for (let startIdx = 0; startIdx < text.length; startIdx++) {
+    if (text[startIdx] === '{') {
+      let depth = 0;
+      let inString = false;
+      let escape = false;
+      for (let i = startIdx; i < text.length; i++) {
+        const ch = text[i];
+        if (escape) { escape = false; continue; }
+        if (ch === '\\' && inString) { escape = true; continue; }
+        if (ch === '"' && !escape) { inString = !inString; continue; }
+        if (!inString) {
+          if (ch === '{') depth++;
+          else if (ch === '}') {
+            depth--;
+            if (depth === 0) {
+              const candidate = text.substring(startIdx, i + 1);
+              try {
+                const parsed = JSON.parse(candidate) as Record<string, unknown>;
+                if (parsed && typeof parsed === 'object') return parsed;
+              } catch {
+                // continue searching
+              }
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Strategy 4: Cari array JSON ([...]) — kadang LLM return array of objects
+  for (let startIdx = 0; startIdx < text.length; startIdx++) {
+    if (text[startIdx] === '[') {
+      let depth = 0;
+      let inString = false;
+      let escape = false;
+      let inBracket = false;
+      for (let i = startIdx; i < text.length; i++) {
+        const ch = text[i];
+        if (escape) { escape = false; continue; }
+        if (ch === '\\' && inString) { escape = true; continue; }
+        if (ch === '"' && !escape) { inString = !inString; continue; }
+        if (!inString) {
+          if (ch === '[') { depth++; inBracket = true; }
+          else if (ch === ']') {
+            depth--;
+            if (inBracket && depth === 0) {
+              const candidate = text.substring(startIdx, i + 1);
+              try {
+                const parsed = JSON.parse(candidate);
+                if (Array.isArray(parsed)) return { items: parsed };
+              } catch {
+                // continue
+              }
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Validasi bahwa objek hasil parse benar-benar punya struktur report riset.
+ * Tanpa validasi ini, LLM yang merespon JSON valid-tapi-salah-struktur
+ * (misal {"message": "..."} atau output terpotong) menghasilkan report kosong.
+ */
+function isValidReportShape(parsed: Record<string, unknown>): boolean {
+  const hasTitle = typeof parsed.title === 'string' && parsed.title.trim().length > 0;
+  const hasSummary = typeof parsed.summary === 'string' && parsed.summary.trim().length > 0;
+  const hasFindings = Array.isArray(parsed.keyFindings) && parsed.keyFindings.length > 0;
+  const hasSections = Array.isArray(parsed.sections) && parsed.sections.length > 0;
+  return hasTitle || hasSummary || hasFindings || hasSections;
+}
+
+/**
+ * Fallback: bangun report yang BERGUNA dari raw LLM output dan/atau sources.
+ * Prioritas sections: (1) markdown headings di raw output, (2) per-source.
+ * Tidak pernah menghasilkan placeholder kosong seperti "Ringkasan tidak tersedia."
+ */
+function buildFallbackReport(raw: string, query: ResearchQuery, sources: Source[]): ResearchReport {
+  const lines = raw.split('\n').map((l) => l.trim()).filter(Boolean);
+  const sections: ReportSection[] = [];
+
+  // 1) Coba parse markdown headings dari raw LLM output
+  let current: ReportSection | null = null;
+  for (const line of lines) {
+    const headingMatch = line.match(/^#{1,3}\s+(.+)/);
+    if (headingMatch) {
+      current = { heading: headingMatch[1]!, content: '' };
+      sections.push(current);
+    } else if (current) {
+      current.content += line + '\n';
+    }
+  }
+
+  // 2) Raw tidak punya struktur — bangun sections dari sources yang terkumpul
+  if (sections.length === 0) {
+    for (const source of sources.slice(0, 10)) {
+      const content = (source.content || source.summary || '').replace(/\s+/g, ' ').trim();
+      if (content.length > 40) {
+        sections.push({ heading: source.title || source.url, content: content.slice(0, 4000) });
+      }
+    }
+  }
+
+  const rawSummary = lines.slice(0, 5).join(' ');
+  const summary =
+    rawSummary ||
+    sources.find((s) => s.summary)?.summary ||
+    `Laporan untuk topik "${query.topic}" disusun dari ${sources.length} sumber yang berhasil dikumpulkan.`;
+
+  return {
+    title: `Laporan: ${query.topic}`,
+    summary: summary.slice(0, 2000),
+    keyFindings: [],
+    sections,
+    conclusions: [],
+    references: sources.map((s) => s.url),
+    generatedAt: new Date(),
+  };
+}
+
+/**
+ * Parse response LLM menjadi ResearchReport.
+ * - JSON valid + struktur report lengkap → gunakan langsung
+ * - JSON valid tapi salah struktur → fallback (bangun dari sources)
+ * - Bukan JSON sama sekali → fallback (markdown headings / sources)
+ */
+export function parseReportResponse(raw: string, query: ResearchQuery, sources: Source[]): ResearchReport {
+  const parsed = extractJSON(raw);
+
+  if (parsed && isValidReportShape(parsed)) {
+    const sections: ReportSection[] = ((parsed.sections as Array<{
+      heading?: string;
+      content?: string;
+      subsections?: Array<{ heading?: string; content?: string }>;
+    }>) ?? [])
+      .filter((s) => s && typeof s === 'object')
+      .map((s) => ({
+        heading: s.heading ?? '',
+        content: s.content ?? '',
+        subsections: s.subsections?.map((sub) => ({
+          heading: sub.heading ?? '',
+          content: sub.content ?? '',
+        })),
+      }));
+
+    const summary = ((parsed.summary as string) ?? '').trim();
+    return {
+      title: (parsed.title as string) || `Laporan: ${query.topic}`,
+      // Jangan biarkan summary kosong — turunkan dari section pertama jika perlu
+      summary: summary || sections[0]?.content?.slice(0, 500) || '',
+      keyFindings: (parsed.keyFindings as string[]) || [],
+      sections,
+      conclusions: (parsed.conclusions as string[]) || [],
+      references: (parsed.references as string[]) || sources.map((s) => s.url),
+      generatedAt: new Date(),
+    };
+  }
+
+  return buildFallbackReport(raw, query, sources);
+}
 
 // ─── Types ─────────────────────────────────────────────────────
 
@@ -208,101 +405,6 @@ export class OpenCodeProvider implements LLMProvider {
     return result || 'Ringkasan tidak tersedia.';
   }
 
-  /**
-   * Ekstrak JSON object dari teks LLM response.
-   * Handle markdown code blocks, teks sebelum/sesudah, nested braces.
-   */
-  private extractJSON(text: string): Record<string, unknown> | null {
-    if (!text) return null;
-
-    // Strategy 1: Coba parse langsung
-    try {
-      return JSON.parse(text) as Record<string, unknown>;
-    } catch {
-      // lanjut
-    }
-
-    // Strategy 2: Hapus markdown code blocks, lalu coba parse
-    const noCodeBlock = text
-      .replace(/```(?:json|javascript)?\s*/gi, '')
-      .replace(/\s*```/g, '')
-      .trim();
-    if (noCodeBlock !== text) {
-      try {
-        return JSON.parse(noCodeBlock) as Record<string, unknown>;
-      } catch {
-        // lanjut
-      }
-    }
-
-    // Strategy 3: Cari JSON object ({...}) dengan brace counting
-    // Handle nested braces dengan benar
-    for (let startIdx = 0; startIdx < text.length; startIdx++) {
-      if (text[startIdx] === '{') {
-        let depth = 0;
-        let inString = false;
-        let escape = false;
-        for (let i = startIdx; i < text.length; i++) {
-          const ch = text[i];
-          if (escape) { escape = false; continue; }
-          if (ch === '\\' && inString) { escape = true; continue; }
-          if (ch === '"' && !escape) { inString = !inString; continue; }
-          if (!inString) {
-            if (ch === '{') depth++;
-            else if (ch === '}') {
-              depth--;
-              if (depth === 0) {
-                // Found balanced JSON object
-                const candidate = text.substring(startIdx, i + 1);
-                try {
-                  const parsed = JSON.parse(candidate) as Record<string, unknown>;
-                  if (parsed && typeof parsed === 'object') return parsed;
-                } catch {
-                  // continue searching
-                }
-                break; // keluar dari inner loop, lanjut cari dari startIdx+1
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // Strategy 4: Cari array JSON ([...]) — kadang LLM return array of objects
-    for (let startIdx = 0; startIdx < text.length; startIdx++) {
-      if (text[startIdx] === '[') {
-        let depth = 0;
-        let inString = false;
-        let escape = false;
-        let inBracket = false;
-        for (let i = startIdx; i < text.length; i++) {
-          const ch = text[i];
-          if (escape) { escape = false; continue; }
-          if (ch === '\\' && inString) { escape = true; continue; }
-          if (ch === '"' && !escape) { inString = !inString; continue; }
-          if (!inString) {
-            if (ch === '[') { depth++; inBracket = true; }
-            else if (ch === ']') {
-              depth--;
-              if (inBracket && depth === 0) {
-                const candidate = text.substring(startIdx, i + 1);
-                try {
-                  const parsed = JSON.parse(candidate);
-                  if (Array.isArray(parsed)) return { items: parsed };
-                } catch {
-                  // continue
-                }
-                break;
-              }
-            }
-          }
-        }
-      }
-    }
-
-    return null;
-  }
-
   async synthesize(sources: Source[], query: ResearchQuery): Promise<ResearchReport> {
     const sourcesText = sources
       .map(
@@ -363,51 +465,10 @@ Jika tidak yakin, tetap return JSON VALID dengan field-field tersebut.`;
         `${LANG_INSTRUCTION}`,
     });
 
-    // Parse JSON response dengan multiple strategies
-    const parsed = this.extractJSON(result);
-
-    if (parsed) {
-      return {
-        title: (parsed.title as string) || `Laporan: ${query.topic}`,
-        summary: (parsed.summary as string) || 'Ringkasan tidak tersedia.',
-        keyFindings: (parsed.keyFindings as string[]) || [],
-        sections: ((parsed.sections as Array<{
-          heading: string;
-          content: string;
-          subsections?: Array<{ heading: string; content: string }>;
-        }>) || []).map((s) => ({
-          heading: s.heading,
-          content: s.content,
-          subsections: s.subsections?.map((sub) => ({
-            heading: sub.heading,
-            content: sub.content,
-          })),
-        })),
-        conclusions: (parsed.conclusions as string[]) || [],
-        references: (parsed.references as string[]) || sources.map((s) => s.url),
-        generatedAt: new Date(),
-      };
-    }
-
-    // Fallback: jadikan response mentah sebagai laporan
-    // Tapi coba ekstrak JSON dari dalam teks terlebih dahulu
-    const lines = result.split('\n').filter((l) => l.trim());
-    const summary = lines.slice(0, 5).join(' ') || result.slice(0, 500);
-
-    return {
-      title: `Laporan: ${query.topic}`,
-      summary,
-      keyFindings: [],
-      sections: [
-        {
-          heading: 'Hasil Analisis',
-          content: lines.length > 5 ? lines.slice(5).join('\n') : result,
-        },
-      ],
-      conclusions: [],
-      references: sources.map((s) => s.url),
-      generatedAt: new Date(),
-    };
+    // Parse JSON response dengan multiple strategies + validasi struktur.
+    // Jika LLM return JSON valid-tapi-salah-struktur, parseReportResponse
+    // akan fallback ke report berbasis sources (tidak pernah kosong).
+    return parseReportResponse(result, query, sources);
   }
 
   async answer(question: string, context: string): Promise<string> {

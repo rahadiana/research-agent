@@ -17,7 +17,23 @@ import type {
   SourceCollector,
   Source,
   ResearchProgress,
+  ResearchGraph,
 } from '../types/index.js';
+
+/**
+ * Metadata tambahan saat mengeksekusi research.
+ * Dipakai untuk sub-research (parentId) dan versioning.
+ */
+export interface ResearchMeta {
+  /** ID custom (default: auto-generate) */
+  id?: string;
+  /** ID parent — untuk sub-research (child → parent) */
+  parentId?: string;
+  /** Versi — naik tiap kali di-rerun */
+  version?: number;
+  /** Tag untuk grouping */
+  tags?: string[];
+}
 
 export interface ResearchEvents {
   on(event: 'progress', listener: (resultId: string, progress: ResearchProgress) => void): this;
@@ -48,11 +64,14 @@ export class ResearchEngine extends EventEmitter implements ResearchEvents {
   }
 
   /**
-   * Eksekusi research pipeline lengkap
+   * Eksekusi research pipeline lengkap.
+   *
+   * @param query - Query riset dari user
+   * @param meta  - Metadata opsional: id custom, parentId (sub-research), version, tags
    */
-  async executeResearch(query: ResearchQuery): Promise<ResearchResult> {
+  async executeResearch(query: ResearchQuery, meta?: ResearchMeta): Promise<ResearchResult> {
     const abortController = new AbortController();
-    const resultId = uuid();
+    const resultId = meta?.id ?? uuid();
     const mergedQuery = this.mergeDefaults(query);
 
     const result: ResearchResult = {
@@ -63,6 +82,9 @@ export class ResearchEngine extends EventEmitter implements ResearchEvents {
       progress: { phase: 'queued', percent: 0, message: 'Dalam antrian...' },
       startedAt: new Date(),
       createdAt: new Date(),
+      parentId: meta?.parentId,
+      version: meta?.version,
+      tags: meta?.tags,
     };
 
     // Simpan segera agar kelihatan di dashboard meski masih antri
@@ -428,6 +450,8 @@ export class ResearchEngine extends EventEmitter implements ResearchEvents {
   /**
    * Buat sub-research (cabang) dari hasil riset yang sudah ada.
    * Anak bisa explore aspek spesifik dari topik parent.
+   * Link parent↔child dibuat SEJAK queued (bukan setelah selesai),
+   * sehingga graph langsung menunjukkan struktur cabang.
    */
   async addSubResearch(
     parentId: string,
@@ -436,12 +460,21 @@ export class ResearchEngine extends EventEmitter implements ResearchEvents {
     const parent = await this.storage.getResult(parentId);
     if (!parent) return null;
 
-    // Jalankan riset baru
-    const child = await this.executeResearch(subQuery);
-    child.parentId = parentId;
+    // Jalankan riset baru — parentId, tags, dan parentContext langsung ter-set
+    // SEBELUM eksekusi. parentContext membuat pencarian child TER-SCOPE ke
+    // konteks induk, sehingga hasilnya relevan (bukan pencarian generik nyasar).
+    const scopedQuery: ResearchQuery = {
+      ...subQuery,
+      parentContext: parent.query.topic,
+    };
+
+    const child = await this.executeResearch(scopedQuery, {
+      parentId,
+      tags: [...(parent.tags ?? []), 'sub-research'],
+    });
     child.tags = [...(parent.tags ?? []), 'sub-research'];
 
-    // Update parent
+    // Update parent: tambah child link
     parent.childIds = [...new Set([...(parent.childIds ?? []), child.id])];
     await this.storage.updateResult(parentId, { childIds: parent.childIds });
 
@@ -453,6 +486,120 @@ export class ResearchEngine extends EventEmitter implements ResearchEvents {
    */
   async getSubResearch(parentId: string): Promise<ResearchResult[]> {
     return this.storage.searchByParent(parentId);
+  }
+
+  /**
+   * Bangun research graph (nodes + edges) dari SEMUA hasil riset.
+   * Edge dibuat dari relasi parentId dan childIds (dedupe).
+   */
+  async getGraph(): Promise<ResearchGraph> {
+    const all = await this.storage.listResults(500, 0);
+    const nodes: ResearchGraph['nodes'] = [];
+    const edges: ResearchGraph['edges'] = [];
+    const nodeIds = new Set<string>();
+    const edgeKeys = new Set<string>();
+
+    for (const r of all) {
+      if (nodeIds.has(r.id)) continue;
+      nodeIds.add(r.id);
+      nodes.push({
+        id: r.id,
+        label: r.query.topic,
+        status: r.status,
+        sources: r.sources.length,
+        createdAt: r.createdAt,
+        parentId: r.parentId,
+        childCount: 0,
+        version: r.version,
+      });
+    }
+
+    // Edges: dari relasi parentId + childIds (pastikan node-nya ada)
+    for (const r of all) {
+      if (r.parentId && nodeIds.has(r.parentId)) {
+        const key = `${r.parentId}->${r.id}`;
+        if (!edgeKeys.has(key)) {
+          edgeKeys.add(key);
+          edges.push({ from: r.parentId, to: r.id });
+        }
+      }
+      for (const childId of r.childIds ?? []) {
+        if (nodeIds.has(childId)) {
+          const key = `${r.id}->${childId}`;
+          if (!edgeKeys.has(key)) {
+            edgeKeys.add(key);
+            edges.push({ from: r.id, to: childId });
+          }
+        }
+      }
+    }
+
+    // Hitung childCount akurat dari edges
+    const childCountMap = new Map<string, number>();
+    for (const edge of edges) {
+      childCountMap.set(edge.from, (childCountMap.get(edge.from) ?? 0) + 1);
+    }
+    for (const node of nodes) {
+      node.childCount = childCountMap.get(node.id) ?? 0;
+    }
+
+    return { nodes, edges };
+  }
+
+  /**
+   * Generate saran sub-query (deep dive) dari report parent via LLM.
+   * Fallback: return [] jika report belum ada atau LLM gagal.
+   *
+   * @param parentId - ID research parent (harus completed + punya report)
+   * @param count    - Jumlah saran (default: 5, max: 10)
+   */
+  async suggestSubQueries(parentId: string, count = 5): Promise<string[]> {
+    const parent = await this.storage.getResult(parentId);
+    if (!parent) return [];
+    const report = parent.report;
+    if (!report) return [];
+
+    const safeCount = Math.min(Math.max(Math.floor(count), 1), 10);
+
+    // Bangun konteks dari report — cukup headings & ringkasan, bukan full content
+    const contextParts = [
+      `Topik riset: ${parent.query.topic}`,
+      report.summary ? `Ringkasan: ${report.summary.slice(0, 3000)}` : '',
+      report.keyFindings.length > 0
+        ? `Temuan kunci:\n${report.keyFindings.map((f) => `- ${f}`).slice(0, 10).join('\n')}`
+        : '',
+      report.sections.length > 0
+        ? `Bagian laporan:\n${report.sections.map((s) => `- ${s.heading}`).join('\n')}`
+        : '',
+      report.conclusions.length > 0
+        ? `Kesimpulan:\n${report.conclusions.map((c) => `- ${c}`).slice(0, 10).join('\n')}`
+        : '',
+    ];
+
+    const context = contextParts.filter(Boolean).join('\n\n');
+
+    const question =
+      `Berdasarkan laporan riset di atas, buatkan ${safeCount} pertanyaan deep-dive ` +
+      `(sub-query) untuk riset lanjutan yang LEBIH SPESIFIK dan MENDALAM. ` +
+      `Setiap pertanyaan harus fokus pada SATU aspek spesifik yang belum terjawab ` +
+      `atau layak digali lebih dalam dari topik "${parent.query.topic}". ` +
+      `Format: satu pertanyaan per baris, awali dengan "- ". Jangan tambahkan teks lain.`;
+
+    try {
+      const raw = await this.llm.answer(question, context);
+      const suggestions = raw
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => line.replace(/^[-*\d.)\s]+/, '').trim())
+        .filter((line) => line.length >= 8 && line.length <= 300)
+        .slice(0, safeCount);
+
+      return suggestions;
+    } catch (err) {
+      console.warn('[ResearchEngine] Gagal generate saran sub-query:', err);
+      return [];
+    }
   }
 
   /**
@@ -491,6 +638,7 @@ export class ResearchEngine extends EventEmitter implements ResearchEvents {
       depth: query.depth ?? this.config.depth,
       maxSources: query.maxSources ?? this.config.maxSources,
       filters: query.filters ?? {},
+      parentContext: query.parentContext,
     } as Required<ResearchQuery>;
   }
 }

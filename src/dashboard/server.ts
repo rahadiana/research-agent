@@ -325,7 +325,13 @@ export class DashboardServer {
           reportHtml = await marked.parse(md);
         }
 
-        renderWithLayout(res, 'detail', { result, reportHtml });
+        // Data graph: parent + children untuk tampilkan cabang riset
+        const [children, parent] = await Promise.all([
+          this.engine.getSubResearch(result.id),
+          result.parentId ? this.engine.getResult(result.parentId) : Promise.resolve(null),
+        ]);
+
+        renderWithLayout(res, 'detail', { result, reportHtml, children, parent });
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         res.status(500).send(`Error: ${msg}`);
@@ -446,6 +452,70 @@ export class DashboardServer {
       }
     });
 
+    // ----- Tambah sub-research (deep dive) dari parent -----
+    this.app.post('/research/:id/sub', async (req, res) => {
+      try {
+        const parent = await this.engine.getResult(req.params.id);
+        if (!parent) {
+          res.status(404).json({ error: 'Research not found' });
+          return;
+        }
+
+        const topic = req.body.topic;
+        if (!topic || typeof topic !== 'string') {
+          res.status(400).json({ error: 'Topic is required' });
+          return;
+        }
+
+        const query: ResearchQuery = {
+          topic,
+          depth: req.body.depth,
+          maxSources: req.body.maxSources ? Number(req.body.maxSources) : undefined,
+          questions: req.body.questions,
+        };
+
+        // Fire-and-forget — client mendapat update via Socket.IO
+        this.engine
+          .addSubResearch(req.params.id, query)
+          .then((child) => {
+            if (child) {
+              console.log(`[Dashboard] Sub-research created: ${child.id} (parent ${req.params.id})`);
+            }
+          })
+          .catch((err: Error) => {
+            console.error('[Dashboard] Sub-research error:', err);
+          });
+
+        res.status(202).json({ message: 'Sub-research queued', parentId: req.params.id });
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        res.status(500).json({ error: msg });
+      }
+    });
+
+    // ----- Generate saran sub-query (deep dive) dari report parent -----
+    this.app.post('/research/:id/suggest', async (req, res) => {
+      try {
+        const count = Number(req.body?.count) || 5;
+        const suggestions = await this.engine.suggestSubQueries(req.params.id, count);
+        res.json({ suggestions });
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        res.status(500).json({ error: msg });
+      }
+    });
+
+    // ----- Halaman graph (visualisasi interconnected) -----
+    this.app.get('/graph', async (_req, res) => {
+      try {
+        const graph = await this.engine.getGraph();
+        renderWithLayout(res, 'graph', { graphJson: JSON.stringify(graph) });
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        res.status(500).send(`Error: ${msg}`);
+      }
+    });
+
     // ----- API: List results -----
     this.app.get('/api/research', async (_req, res) => {
       try {
@@ -483,6 +553,28 @@ export class DashboardServer {
         res.status(500).json({ error: msg });
       }
     });
+
+    // ----- API: Research graph (nodes + edges) -----
+    this.app.get('/api/graph', async (_req, res) => {
+      try {
+        const graph = await this.engine.getGraph();
+        res.json(graph);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        res.status(500).json({ error: msg });
+      }
+    });
+
+    // ----- API: Children dari sebuah research -----
+    this.app.get('/api/research/:id/children', async (req, res) => {
+      try {
+        const children = await this.engine.getSubResearch(req.params.id);
+        res.json(children);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        res.status(500).json({ error: msg });
+      }
+    });
   }
 
   /** Registrasi Socket.IO event handlers */
@@ -508,6 +600,7 @@ export class DashboardServer {
       this.io.emit('research:started', {
         resultId: result.id,
         topic: result.query.topic,
+        parentId: result.parentId ?? null,
       });
     });
 

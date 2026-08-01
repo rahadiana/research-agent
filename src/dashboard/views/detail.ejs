@@ -292,6 +292,113 @@
       </div>
     <% } %>
 
+    <!-- Deep Dive: Sub Research -->
+    <% if (result.status === 'completed' && result.report) { %>
+      <div class="glass-card rounded-2xl p-5">
+        <h3 class="text-sm font-semibold mb-3 flex items-center gap-2">
+          <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+          Deep Dive — Sub Research
+        </h3>
+        <p class="text-xs text-slate-500 mb-3 leading-relaxed">Gali topik ini lebih dalam dengan sub-query. Anak riset otomatis terhubung sebagai cabang (graph).</p>
+        <button id="suggest-btn" onclick="suggestDeepDive()"
+                class="w-full flex items-center justify-center gap-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 rounded-xl px-4 py-2.5 text-xs font-medium border border-emerald-500/20 transition-all">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+          Generate Suggestions (AI)
+        </button>
+        <div id="suggestions" class="hidden mt-3 space-y-1.5"></div>
+        <div class="flex items-center gap-3 my-3">
+          <div class="h-px flex-1 bg-slate-700/40"></div>
+          <span class="text-[10px] uppercase tracking-wider text-slate-500">atau manual</span>
+          <div class="h-px flex-1 bg-slate-700/40"></div>
+        </div>
+        <form id="sub-form" class="space-y-3" onsubmit="submitSubResearch(event)">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5" for="sub-topic">Sub-query topic <span class="text-emerald-400">*</span></label>
+            <input type="text" id="sub-topic" name="topic" required
+                   class="w-full bg-slate-800/50 border border-slate-600/50 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition"
+                   placeholder="e.g. <%= result.query.topic %> — implementasi & proyek">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5" for="sub-questions">Questions <span class="text-slate-500 font-normal">(one per line)</span></label>
+            <textarea id="sub-questions" name="questions" rows="2"
+                      class="w-full bg-slate-800/50 border border-slate-600/50 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition"
+                      placeholder="Aspek spesifik yang ingin digali..."></textarea>
+          </div>
+          <div class="flex gap-3">
+            <div class="flex-1">
+              <label class="block text-xs font-medium text-slate-400 mb-1.5" for="sub-depth">Depth</label>
+              <select id="sub-depth" name="depth"
+                      class="w-full bg-slate-800/50 border border-slate-600/50 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition">
+                <option value="quick">Quick</option>
+                <option value="medium" selected>Medium</option>
+                <option value="deep">Deep</option>
+              </select>
+            </div>
+            <div class="flex-1">
+              <label class="block text-xs font-medium text-slate-400 mb-1.5" for="sub-sources">Max Sources</label>
+              <input type="number" id="sub-sources" name="maxSources" min="1" max="50" value="5"
+                     class="w-full bg-slate-800/50 border border-slate-600/50 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition">
+            </div>
+          </div>
+          <button type="submit" id="sub-submit-btn"
+                  class="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white font-semibold rounded-xl px-4 py-2.5 text-xs transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-emerald-500/20">
+            Start Sub-Research
+          </button>
+        </form>
+        <div id="sub-status" class="mt-3 text-xs text-slate-400 hidden"></div>
+      </div>
+    <% } %>
+
+    <!-- Branches (parent & children) -->
+    <div class="glass-card rounded-2xl overflow-hidden">
+      <div class="px-5 py-3.5 border-b border-slate-700/30 flex items-center justify-between">
+        <h3 class="text-sm font-semibold flex items-center gap-2">
+          <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+          Branches
+        </h3>
+        <a href="/graph#<%= result.id %>" class="text-xs font-medium text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition-colors">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+          Lihat Graph
+        </a>
+      </div>
+      <div class="divide-y divide-slate-700/20 max-h-72 overflow-y-auto">
+        <% if (parent) { %>
+          <div class="px-5 py-3 bg-blue-500/5">
+            <p class="text-[10px] uppercase tracking-wider text-slate-500 mb-1">Parent</p>
+            <a href="/research/<%= parent.id %>" class="text-sm text-blue-400 hover:text-blue-300 font-medium block truncate transition-colors">
+              <%= parent.query.topic %>
+            </a>
+            <span class="text-xs text-slate-500"><%= parent.status %></span>
+          </div>
+        <% } %>
+        <% if (children.length === 0 && !parent) { %>
+          <div class="px-5 py-8 text-center">
+            <p class="text-xs text-slate-500">Belum ada cabang. Gunakan Deep Dive untuk menambah sub-research.</p>
+          </div>
+        <% } %>
+        <% children.forEach(function(c) {
+          var cMeta = statusMeta[c.status] || statusMeta.cancelled;
+        %>
+          <div class="px-5 py-3 hover:bg-slate-700/20 transition-colors duration-150">
+            <div class="flex items-center gap-2">
+              <a href="/research/<%= c.id %>" class="text-sm text-emerald-400 hover:text-emerald-300 font-medium block truncate flex-1 transition-colors">
+                <%= c.query.topic %>
+              </a>
+              <span class="status-badge <%= cMeta.badge %> border shrink-0">
+                <span class="status-dot <%= cMeta.dot %>"></span>
+                <%= c.status %>
+              </span>
+            </div>
+            <div class="flex items-center gap-2 mt-1 text-xs text-slate-500">
+              <span><%= c.sources.length %> sources</span>
+              <span>·</span>
+              <span><%= new Date(c.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) %></span>
+            </div>
+          </div>
+        <% }); %>
+      </div>
+    </div>
+
     <!-- Actions -->
     <div class="glass-card rounded-2xl p-4 space-y-2">
       <a href="/" class="flex items-center justify-center gap-2 w-full bg-slate-700/30 hover:bg-slate-700/50 text-slate-300 hover:text-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium transition-all">
@@ -330,6 +437,8 @@
 <script>
   socket.emit('research:subscribe', { resultId: '<%= result.id %>' });
 
+  var childIds = [<%- JSON.stringify(children.map(function(c) { return c.id; })) %>];
+
   socket.on('research:progress', function(data) {
     if (data.resultId === '<%= result.id %>') {
       var bar = document.getElementById('progress-' + data.resultId);
@@ -342,14 +451,104 @@
   socket.on('research:complete', function(data) {
     if (data.resultId === '<%= result.id %>') {
       setTimeout(function() { location.reload(); }, 1000);
+    } else if (childIds.indexOf(data.resultId) !== -1) {
+      // Anak riset selesai — refresh cabang
+      setTimeout(function() { location.reload(); }, 1500);
     }
   });
 
   socket.on('research:error', function(data) {
     if (data.resultId === '<%= result.id %>') {
       setTimeout(function() { location.reload(); }, 1000);
+    } else if (childIds.indexOf(data.resultId) !== -1) {
+      setTimeout(function() { location.reload(); }, 1500);
     }
   });
+
+  // Sub-research baru yang dibuat dari halaman ini — langsung muncul di Branches
+  socket.on('research:started', function(data) {
+    if (data.parentId === '<%= result.id %>') {
+      setTimeout(function() { location.reload(); }, 1500);
+    }
+  });
+
+  function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  async function suggestDeepDive() {
+    var btn = document.getElementById('suggest-btn');
+    var box = document.getElementById('suggestions');
+    btn.disabled = true;
+    btn.classList.add('opacity-50', 'cursor-not-allowed');
+    box.classList.remove('hidden');
+    box.innerHTML = '<p class="text-xs text-slate-400 animate-pulse">AI sedang menganalisis report...</p>';
+    try {
+      var res = await fetch('/research/<%= result.id %>/suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count: 5 })
+      });
+      var data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      if (data.suggestions && data.suggestions.length > 0) {
+        box.innerHTML = data.suggestions.map(function(s) {
+          return '<button type="button" onclick="startSubFromSuggestion(this)" ' +
+            'class="w-full text-left text-xs text-slate-300 bg-slate-800/50 hover:bg-emerald-500/10 hover:text-emerald-300 border border-slate-600/30 hover:border-emerald-500/30 rounded-xl px-3.5 py-2.5 transition-all duration-150 flex items-start gap-2">' +
+            '<span class="text-emerald-400 shrink-0 mt-0.5">&plus;</span><span>' + escapeHtml(s) + '</span></button>';
+        }).join('');
+      } else {
+        box.innerHTML = '<p class="text-xs text-slate-500">Tidak ada saran yang dihasilkan. Coba form manual di bawah.</p>';
+      }
+    } catch (err) {
+      box.innerHTML = '<p class="text-xs text-red-400">Gagal generate saran: ' + escapeHtml(err.message || 'error') + '</p>';
+    } finally {
+      btn.disabled = false;
+      btn.classList.remove('opacity-50', 'cursor-not-allowed');
+    }
+  }
+
+  async function startSubFromSuggestion(btn) {
+    var topic = btn.querySelector('span:last-child').textContent;
+    await startSubResearch(topic, []);
+  }
+
+  async function startSubResearch(topic, questions) {
+    var statusEl = document.getElementById('sub-status');
+    statusEl.classList.remove('hidden');
+    statusEl.textContent = 'Mengantri sub-research: "' + topic + '"...';
+    try {
+      var res = await fetch('/research/<%= result.id %>/sub', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: topic,
+          questions: questions,
+          depth: document.getElementById('sub-depth') ? document.getElementById('sub-depth').value : 'medium',
+          maxSources: document.getElementById('sub-sources') ? Number(document.getElementById('sub-sources').value) : 5
+        })
+      });
+      var data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      statusEl.textContent = 'Sub-research diantrikan! Halaman akan refresh otomatis.';
+      showToast('Sub-research queued', 'success');
+      setTimeout(function() { location.reload(); }, 2000);
+    } catch (err) {
+      statusEl.textContent = 'Gagal: ' + err.message;
+      showToast('Sub-research gagal: ' + err.message, 'error');
+    }
+  }
+
+  async function submitSubResearch(event) {
+    event.preventDefault();
+    var topic = document.getElementById('sub-topic').value.trim();
+    if (!topic) return;
+    var questionsRaw = document.getElementById('sub-questions').value;
+    var questions = questionsRaw.split('\n').map(function(q) { return q.trim(); }).filter(Boolean);
+    await startSubResearch(topic, questions);
+  }
 
   async function retryResearch(id) {
     try {

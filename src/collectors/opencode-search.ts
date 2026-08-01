@@ -192,6 +192,12 @@ export class OpencodeSearchCollector implements SourceCollector {
     const questionsText = query.questions?.length
       ? `\nPertanyaan spesifik:\n${query.questions.map((q) => `- ${q}`).join('\n')}`
       : '';
+    // Sub-research: scope pencarian ke konteks riset induk supaya hasil relevan
+    const parentContextText = query.parentContext
+      ? `\nKONTEKS INDUK: Riset ini adalah sub-riset / deep-dive dari "${query.parentContext}". ` +
+        `Setiap hasil yang dicari HARUS relevan dengan konteks induk tersebut — ` +
+        `jangan cari topik ini secara generik/terpisah dari konteks induknya.`
+      : '';
 
     for (let round = 0; round < rounds; round++) {
       const remaining = maxSources - allSearchResults.length;
@@ -205,6 +211,7 @@ export class OpencodeSearchCollector implements SourceCollector {
 
       const searchPrompt = `Cari informasi di web tentang: "${query.topic}"
 ${questionsText}
+${parentContextText}
 ${roundContext}
 ${academicHint}
 
@@ -582,10 +589,15 @@ Cari ${askCount} hasil yang relevan — prioritaskan artikel orisinil, publikasi
 
     const seenFallbackUrls = new Set<string>();
 
+    // Sub-research: scope fallback search ke konteks induk
+    const searchBase = query.parentContext
+      ? `${query.parentContext} ${query.topic}`
+      : query.topic;
+
     const queries = [
-      query.topic,
-      `${query.topic} research paper`,
-      `${query.topic} journal article`,
+      searchBase,
+      `${searchBase} research paper`,
+      `${searchBase} journal article`,
     ];
 
     for (const searchTerm of queries) {

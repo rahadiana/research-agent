@@ -14,6 +14,8 @@ export interface ResearchQuery {
   maxSources?: number;
   /** Filter sumber (domain, tanggal, dll) */
   filters?: ResearchFilters;
+  /** Konteks riset induk (sub-research) — dipakai untuk scope pencarian */
+  parentContext?: string;
 }
 
 export type ResearchDepth = 'quick' | 'medium' | 'deep';
@@ -70,6 +72,33 @@ export interface ResearchResult {
   version?: number;
   /** Tag untuk grouping */
   tags?: string[];
+}
+
+/** Node dalam research graph (visualisasi interconnected) */
+export interface GraphNode {
+  id: string;
+  label: string;
+  status: ResearchStatus;
+  sources: number;
+  createdAt: Date;
+  /** ID parent (jika sub-research) */
+  parentId?: string;
+  /** Jumlah child langsung */
+  childCount: number;
+  /** Versi (jika pernah di-rerun) */
+  version?: number;
+}
+
+/** Edge (hubungan parent → child) dalam research graph */
+export interface GraphEdge {
+  from: string;
+  to: string;
+}
+
+/** Struktur research graph lengkap */
+export interface ResearchGraph {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
 }
 
 /** Update payload untuk edit report */
