@@ -430,6 +430,13 @@ Cari ${askCount} hasil yang relevan — prioritaskan artikel orisinil, publikasi
       textContent = result.snippet;
     }
 
+    // Bersihkan artifact halaman cache/redirect Google:
+    // link relatif (mis. /httpservice/retry/enablejs) & meta refresh —
+    // kalau dibiarkan, jadi link 404 yang mengarah ke server dashboard kita.
+    textContent = textContent
+      .replace(/<a\s+href="\/(?!\/)[^"]*"[^>]*>([\s\S]*?)<\/a>/gi, '$1')
+      .replace(/<meta[^>]*url=[^>]*>/gi, '');
+
     // Parse metadata
     const metadata: SourceMetadata = {
       domain: new URL(result.url).hostname,
@@ -552,6 +559,11 @@ Cari ${askCount} hasil yang relevan — prioritaskan artikel orisinil, publikasi
         } else {
           textContent = $('body').text().replace(/\s+/g, ' ').trim();
         }
+
+        // Bersihkan artifact link relatif & meta refresh (lihat scrapeUrl)
+        textContent = textContent
+          .replace(/<a\s+href="\/(?!\/)[^"]*"[^>]*>([\s\S]*?)<\/a>/gi, '$1')
+          .replace(/<meta[^>]*url=[^>]*>/gi, '');
 
         if (!textContent || textContent.length < 50) return null;
 

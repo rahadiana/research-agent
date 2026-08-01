@@ -10,7 +10,7 @@ import { describe, it, expect } from 'vitest';
 
 import { parseReportResponse } from '../src/llm/opencode-provider.js';
 import { OpenAIProvider } from '../src/llm/llm-client.js';
-import { splitIntoParagraphs } from '../src/dashboard/server.js';
+import { splitIntoParagraphs, sanitizeReportMarkdown } from '../src/dashboard/server.js';
 import type { ResearchQuery, Source, ResearchReport } from '../src/types/index.js';
 
 // ---------------------------------------------------------------------------
@@ -204,6 +204,49 @@ describe('splitIntoParagraphs', () => {
 
   it('teks kosong → []', () => {
     expect(splitIntoParagraphs('')).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// sanitizeReportMarkdown (link relatif artifact Google cache)
+// ---------------------------------------------------------------------------
+
+describe('sanitizeReportMarkdown', () => {
+  it('menetralkan <a href="/path">teks</a> relatif → teks (bug /httpservice)', () => {
+    const md =
+      'Klik <a href="/httpservice/retry/enablejs?sei=abc123">di sini</a> jika Anda tak dialihkan.';
+
+    const cleaned = sanitizeReportMarkdown(md);
+
+    expect(cleaned).not.toContain('href="/httpservice');
+    expect(cleaned).toContain('di sini');
+    expect(cleaned).toContain('jika Anda tak dialihkan');
+  });
+
+  it('menetralkan link markdown relatif [teks](/path)', () => {
+    const md = 'Lihat [panduan](/httpservice/retry/enablejs) untuk detail.';
+
+    const cleaned = sanitizeReportMarkdown(md);
+
+    expect(cleaned).not.toContain('](/');
+    expect(cleaned).toContain('panduan');
+  });
+
+  it('menghapus <meta ... url=...> refresh', () => {
+    const md = '<meta content="0;url=/httpservice/retry/enablejs?sei=1" http-equiv="refresh">';
+
+    const cleaned = sanitizeReportMarkdown(md);
+
+    expect(cleaned).not.toContain('/httpservice');
+  });
+
+  it('TIDAK menyentuh link absolut (http/https)', () => {
+    const md = 'Sumber: <a href="https://github.com/rahadiana">GitHub</a> dan [blog](https://rahadiana.blogspot.com/).';
+
+    const cleaned = sanitizeReportMarkdown(md);
+
+    expect(cleaned).toContain('href="https://github.com/rahadiana"');
+    expect(cleaned).toContain('](https://rahadiana.blogspot.com/)');
   });
 });
 

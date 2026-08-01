@@ -75,6 +75,21 @@ function renderWithLayout(
  * Konversi ResearchResult report ke markdown string
  */
 /**
+ * Netralkan link relatif & meta-refresh dari konten report (artifact halaman
+ * cache Google seperti /httpservice/retry/enablejs) supaya tidak menjadi
+ * link 404 yang mengarah ke server kita sendiri.
+ * - `<a href="/path">teks</a>` → `teks`
+ * - `[teks](/path)` → `teks`
+ * - `<meta ... url=...>` → dihapus
+ */
+export function sanitizeReportMarkdown(md: string): string {
+  return md
+    .replace(/<a\s+href="\/(?!\/)[^"]*"[^>]*>([\s\S]*?)<\/a>/gi, '$1')
+    .replace(/\[([^\]]*)\]\(\/(?!\/)[^)\s]*\)/g, '$1')
+    .replace(/<meta[^>]*url=[^>]*>/gi, '');
+}
+
+/**
  * Konversi report ke markdown — versi FULL untuk export (MD/HTML).
  */
 function reportToExportMarkdown(result: ResearchResult): string {
@@ -119,7 +134,7 @@ function reportToExportMarkdown(result: ResearchResult): string {
     md += '\n';
   }
 
-  return md;
+  return sanitizeReportMarkdown(md);
 }
 
 /**
@@ -174,7 +189,7 @@ function reportSectionsToMarkdown(result: ResearchResult): string {
     }
   }
 
-  return parts.join('\n\n');
+  return sanitizeReportMarkdown(parts.join('\n\n'));
 }
 
 /**
