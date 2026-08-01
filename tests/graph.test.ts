@@ -223,6 +223,108 @@ describe('ResearchEngine — addSubResearch (linking)', () => {
   });
 });
 
+describe('ResearchEngine — removeSource & regenerateReport', () => {
+  let dataDir: string;
+  let storage: VectorDB;
+
+  beforeEach(() => {
+    dataDir = mkdtempSync(join(tmpdir(), 'graph-src-test-'));
+    storage = new VectorDB({ dataDir });
+  });
+
+  afterEach(() => {
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  function saveResult(id: string, sources: Source[]): Promise<void> {
+    const result: ResearchResult = {
+      id,
+      query: { topic: 'Topik ' + id, depth: 'quick', maxSources: 5 },
+      status: 'completed',
+      sources,
+      progress: { phase: 'done', percent: 100, message: 'done' },
+      createdAt: new Date(),
+    };
+    return storage.saveResult(result);
+  }
+
+  it('removeSource menghapus source & persist', async () => {
+    const engine = createEngine(dataDir);
+    await saveResult('r1', [createSource('S1', 'https://a.com'), createSource('S2', 'https://b.com')]);
+
+    const updated = await engine.removeSource('r1', 'src-S1');
+
+    expect(updated!.sources).toHaveLength(1);
+    expect(updated!.sources[0].id).toBe('src-S2');
+    // Persist — getResult baru dari storage
+    const reloaded = await storage.getResult('r1');
+    expect(reloaded!.sources).toHaveLength(1);
+    expect(reloaded!.sources[0].url).toBe('https://b.com');
+  });
+
+  it('removeSource menolak menghapus sumber terakhir', async () => {
+    const engine = createEngine(dataDir);
+    await saveResult('r2', [createSource('S1', 'https://a.com')]);
+
+    await expect(engine.removeSource('r2', 'src-S1')).rejects.toThrow('sumber terakhir');
+    // Sumber tetap utuh
+    const reloaded = await storage.getResult('r2');
+    expect(reloaded!.sources).toHaveLength(1);
+  });
+
+  it('removeSource mengembalikan result jika source tidak ditemukan', async () => {
+    const engine = createEngine(dataDir);
+    await saveResult('r3', [createSource('S1', 'https://a.com'), createSource('S2', 'https://b.com')]);
+
+    const result = await engine.removeSource('r3', 'tidak-ada');
+
+    expect(result!.sources).toHaveLength(2);
+  });
+
+  it('regenerateReport mensintesis ulang dari sisa sources & emit report:updated', async () => {
+    const engine = createEngine(dataDir);
+    await saveResult('r4', [createSource('S1', 'https://a.com'), createSource('S2', 'https://b.com')]);
+
+    let emittedId: string | null = null;
+    engine.on('report:updated', (r) => { emittedId = r.id; });
+
+    const updated = await engine.regenerateReport('r4');
+
+    expect(updated!.report).toBeDefined();
+    expect(updated!.report!.title).toBe('Report: Topik r4');
+    expect(updated!.report!.keyFindings).toEqual(['Finding A', 'Finding B']);
+    expect(emittedId).toBe('r4');
+    // Persist
+    const reloaded = await storage.getResult('r4');
+    expect(reloaded!.report!.summary).toBe('Summary from mock LLM.');
+  });
+
+  it('regenerateReport gagal jika tidak ada sumber', async () => {
+    const engine = createEngine(dataDir);
+    await saveResult('r5', []);
+
+    await expect(engine.regenerateReport('r5')).rejects.toThrow('Tidak ada sumber');
+  });
+
+  it('removeSource membersihkan embedding sumber dari vector DB', async () => {
+    const engine = createEngine(dataDir);
+    await saveResult('r6', [createSource('S1', 'https://a.com'), createSource('S2', 'https://b.com')]);
+
+    // Verifikasi embedding ada sebelum dihapus (instance baru = baca dari disk)
+    const beforeDb = new VectorDB({ dataDir });
+    const before = await beforeDb.semanticSearch('S1', 50);
+    expect(before.some((m) => m.id.startsWith('r6::source::src-S1'))).toBe(true);
+
+    await engine.removeSource('r6', 'src-S1');
+
+    // Instance BARU — baca langsung dari file persist, bukan memori lama
+    const afterDb = new VectorDB({ dataDir });
+    const after = await afterDb.semanticSearch('S1', 50);
+    expect(after.some((m) => m.id.startsWith('r6::source::src-S1'))).toBe(false);
+    expect(after.some((m) => m.id.startsWith('r6::content::src-S1'))).toBe(false);
+  });
+});
+
 describe('ResearchEngine — suggestSubQueries', () => {
   let dataDir: string;
 

@@ -495,6 +495,17 @@ export class VectorDB implements ResearchStorage {
     await this.persist();
   }
 
+  /**
+   * Hapus embedding milik SATU sumber (title + content) dari vector DB.
+   * Dipanggil saat source dihapus dari sebuah hasil riset.
+   */
+  async removeSourceEmbeddings(resultId: string, sourceId: string): Promise<void> {
+    this.checkReload();
+    this.embeddings.delete(`${resultId}::source::${sourceId}`);
+    this.embeddings.delete(`${resultId}::content::${sourceId}`);
+    await this.persist();
+  }
+
   // ── New API methods ─────────────────────────────────────────────
 
   async searchByParent(parentId: string): Promise<ResearchResult[]> {

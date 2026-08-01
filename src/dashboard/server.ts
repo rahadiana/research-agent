@@ -545,6 +545,51 @@ export class DashboardServer {
       }
     });
 
+    // ----- Hapus satu source dari research -----
+    this.app.delete('/research/:id/sources/:sourceId', async (req, res) => {
+      try {
+        const result = await this.engine.removeSource(req.params.id, req.params.sourceId);
+        if (!result) {
+          res.status(404).json({ error: 'Research not found' });
+          return;
+        }
+        res.json({ message: 'Source deleted', sources: result.sources.length });
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        res.status(400).json({ error: msg });
+      }
+    });
+
+    // ----- Kalkulasi ulang report dari sisa sumber -----
+    this.app.post('/research/:id/report/regenerate', async (req, res) => {
+      try {
+        const result = await this.engine.getResult(req.params.id);
+        if (!result) {
+          res.status(404).json({ error: 'Research not found' });
+          return;
+        }
+        if (result.sources.length === 0) {
+          res.status(400).json({ error: 'Tidak ada sumber untuk disintesis ulang' });
+          return;
+        }
+
+        // Fire-and-forget — client mendapat update via Socket.IO
+        this.engine
+          .regenerateReport(req.params.id)
+          .then((r) => {
+            if (r) console.log(`[Dashboard] Report regenerated: ${r.id}`);
+          })
+          .catch((err: Error) => {
+            console.error('[Dashboard] Regenerate report error:', err);
+          });
+
+        res.status(202).json({ message: 'Report sedang dikalkulasi ulang' });
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        res.status(500).json({ error: msg });
+      }
+    });
+
     // ----- Halaman graph (visualisasi interconnected) -----
     this.app.get('/graph', async (_req, res) => {
       try {
@@ -657,6 +702,17 @@ export class DashboardServer {
     this.engine.on('error', (resultId: string, errMsg: string) => {
       this.io.to(`research:${resultId}`).emit('research:error', { resultId, error: errMsg });
       this.io.emit('research:error', { resultId, error: errMsg });
+    });
+
+    // Report dikalkulasi ulang (setelah source dihapus) — UI reload
+    this.engine.on('report:updated', (result: ResearchResult) => {
+      this.io.to(`research:${result.id}`).emit('research:report-updated', { resultId: result.id });
+      this.io.emit('research:report-updated', { resultId: result.id });
+    });
+
+    this.engine.on('report:error', (resultId: string, errMsg: string) => {
+      this.io.to(`research:${resultId}`).emit('research:report-error', { resultId, error: errMsg });
+      this.io.emit('research:report-error', { resultId, error: errMsg });
     });
   }
 

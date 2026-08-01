@@ -39,7 +39,9 @@ export interface ResearchEvents {
   on(event: 'progress', listener: (resultId: string, progress: ResearchProgress) => void): this;
   on(event: 'complete', listener: (result: ResearchResult) => void): this;
   on(event: 'error', listener: (resultId: string, error: string) => void): this;
-  emit(event: 'progress' | 'complete' | 'error', ...args: unknown[]): boolean;
+  on(event: 'report:updated', listener: (result: ResearchResult) => void): this;
+  on(event: 'report:error', listener: (resultId: string, error: string) => void): this;
+  emit(event: 'progress' | 'complete' | 'error' | 'report:updated' | 'report:error', ...args: unknown[]): boolean;
 }
 
 export class ResearchEngine extends EventEmitter implements ResearchEvents {
@@ -479,6 +481,75 @@ export class ResearchEngine extends EventEmitter implements ResearchEvents {
     await this.storage.updateResult(parentId, { childIds: parent.childIds });
 
     return child;
+  }
+
+  /**
+   * Hapus SATU sumber dari hasil riset (misal: sumber tidak relevan).
+   * Embeddings sumber ikut dibersihkan dari vector DB.
+   * Tidak bisa menghapus sumber terakhir — report butuh minimal 1 sumber.
+   */
+  async removeSource(resultId: string, sourceId: string): Promise<ResearchResult | null> {
+    const result = await this.storage.getResult(resultId);
+    if (!result) return null;
+
+    const remaining = result.sources.filter((s) => s.id !== sourceId);
+    if (remaining.length === result.sources.length) {
+      // Source tidak ditemukan — kembalikan result apa adanya
+      return result;
+    }
+    if (remaining.length === 0) {
+      throw new Error('Tidak bisa menghapus sumber terakhir — report butuh minimal 1 sumber');
+    }
+
+    result.sources = remaining;
+    await this.storage.updateResult(resultId, { sources: remaining });
+
+    // Bersihkan embedding sumber dari vector DB (non-fatal kalau gagal)
+    const storage = this.storage as ResearchStorage & {
+      removeSourceEmbeddings?(resultId: string, sourceId: string): Promise<void>;
+    };
+    if (typeof storage.removeSourceEmbeddings === 'function') {
+      try {
+        await storage.removeSourceEmbeddings(resultId, sourceId);
+      } catch (err) {
+        console.warn('[ResearchEngine] Gagal hapus embedding sumber:', err);
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Kalkulasi ulang report dari sumber yang TERSISA.
+   * Dipakai setelah menghapus source tidak relevan — summary & sections
+   * disintesis ulang oleh LLM dari sumber yang ada sekarang.
+   */
+  async regenerateReport(resultId: string): Promise<ResearchResult | null> {
+    const result = await this.storage.getResult(resultId);
+    if (!result) return null;
+    if (result.sources.length === 0) {
+      throw new Error('Tidak ada sumber untuk disintesis ulang');
+    }
+
+    try {
+      const report = await this.llm.synthesize(result.sources, result.query);
+      result.report = report;
+      result.status = 'completed';
+      result.completedAt = new Date();
+      result.progress = { phase: 'done', percent: 100, message: 'Report dikalkulasi ulang' };
+      await this.storage.updateResult(resultId, {
+        report,
+        status: 'completed',
+        completedAt: result.completedAt,
+        progress: result.progress,
+      });
+      this.emit('report:updated', result);
+      return result;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      this.emit('report:error', resultId, errorMsg);
+      throw error;
+    }
   }
 
   /**
