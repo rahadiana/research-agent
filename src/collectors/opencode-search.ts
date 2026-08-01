@@ -192,12 +192,19 @@ export class OpencodeSearchCollector implements SourceCollector {
     const questionsText = query.questions?.length
       ? `\nPertanyaan spesifik:\n${query.questions.map((q) => `- ${q}`).join('\n')}`
       : '';
-    // Sub-research: scope pencarian ke konteks riset induk supaya hasil relevan
+    // Sub-research: scope pencarian ke konteks riset induk supaya hasil relevan.
+    // Konteks induk digabungkan LANGSUNG ke string pencarian (mis. sub-query
+    // "keluarga" dari induk "R. Dady Rachmadi" → cari "R. Dady Rachmadi keluarga"),
+    // bukan hanya sebagai instruksi — instruksi saja tidak cukup kuat melawan
+    // interpretasi generik LLM (mis. "keluarga" → program keluarga berencana).
     const parentContextText = query.parentContext
       ? `\nKONTEKS INDUK: Riset ini adalah sub-riset / deep-dive dari "${query.parentContext}". ` +
         `Setiap hasil yang dicari HARUS relevan dengan konteks induk tersebut — ` +
         `jangan cari topik ini secara generik/terpisah dari konteks induknya.`
       : '';
+    const searchTopic = query.parentContext
+      ? `${query.parentContext} ${query.topic}`
+      : query.topic;
 
     for (let round = 0; round < rounds; round++) {
       const remaining = maxSources - allSearchResults.length;
@@ -205,11 +212,11 @@ export class OpencodeSearchCollector implements SourceCollector {
 
       // Minta lebih sedikit per round — LLM lebih akurat dengan 5-8 URL
       const askCount = Math.min(URLS_PER_ROUND, remaining + 2); // +2 buffer buat yang mungkin invalid
-      const roundContext = this.buildRoundContext(round, query.topic, allSearchResults);
+      const roundContext = this.buildRoundContext(round, searchTopic, allSearchResults);
 
       const academicHint = round >= 1 ? `\n\nJika hasil sebelumnya masih kurang, cari juga dari sumber AKADEMIS/JURNAL seperti Google Scholar, ResearchGate, Springer, IEEE, portal jurnal universitas, atau repositori institusi. Kalau topiknya sains/teknologi, arXiv juga bisa jadi sumber.` : '';
 
-      const searchPrompt = `Cari informasi di web tentang: "${query.topic}"
+      const searchPrompt = `Cari informasi di web tentang: "${searchTopic}"
 ${questionsText}
 ${parentContextText}
 ${roundContext}
